@@ -2,8 +2,6 @@ import secrets
 import base64
 import shortuuid
 
-from typing import Optional
-
 from fastapi import HTTPException
 from sqlmodel import select
 
@@ -17,9 +15,7 @@ from Andromeda.schemas.jwt import JWTPayload
 
 
 valid_user_types = ["user", "client", "node"]
-
 valid_type_prefixes = ["sk", "nk", "wk", "mk", "fk"]
-
 valid_env_types = ["live", "test"]
 
 
@@ -49,8 +45,7 @@ def format_key(prefix: str, type: str, kid: str, secret: str) -> str:
     return f"{prefix}_{type}_{kid}_{secret}"
  
 
-
-async def create_api_key(request: CreateKeyRequest, user: JWTPayload) -> Optional[CreatedKeyResponse]:
+async def create_api_key(request: CreateKeyRequest, user: JWTPayload) -> CreatedKeyResponse | None:
     if request is None:
         raise HTTPException(status_code=400, detail="Invalid request")
     
@@ -59,7 +54,7 @@ async def create_api_key(request: CreateKeyRequest, user: JWTPayload) -> Optiona
     if len(sub_components) != 2 or sub_components[0] not in valid_user_types:
         raise HTTPException(status_code=403, detail="Invalid user type")
 
-    if request.scopes not in user.scopes:
+    if not all(scope in user.scopes for scope in request.scopes):
         raise HTTPException(status_code=403, detail="Missing scopes")
     
     if sub_components[0] == "client":
@@ -84,9 +79,3 @@ async def create_api_key(request: CreateKeyRequest, user: JWTPayload) -> Optiona
             await session.refresh(key)
 
             return CreatedKeyResponse(name=request.name, type=request.type, env=request.env, scopes=request.scopes, key=full_key)
-        
-    if  sub_components[1] == "user":
-        pass
-
-    if sub_components[1] == "node":
-        pass
