@@ -1,6 +1,4 @@
-import asyncio
-
-from sqlmodel import SQLModel, text
+from sqlmodel import SQLModel
 
 from Andromeda.api.database.database import engine
 import Andromeda.models

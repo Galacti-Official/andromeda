@@ -26,15 +26,15 @@ async def issue_token(sub_type: str, sub: str, scopes: list[str] | None) -> str:
                 "nbf": datetime.now(timezone.utc),
                 "exp": datetime.now(timezone.utc) + timedelta(hours=1)             
             },
-            settings.jwt_private_key,
-            algorithm="RS256"
+            key = settings.jwt_private_key,
+            algorithm = "RS256"
         )
     
     return encoded_jwt
 
 
 async def set_session_cookie(response, sub: str, scopes: list[str]):
-    token = await issue_token("user", sub, scopes)
+    token = await issue_token(sub_type="user", sub=sub, scopes=scopes)
 
     response.set_cookie(
         key=COOKIE_NAME,

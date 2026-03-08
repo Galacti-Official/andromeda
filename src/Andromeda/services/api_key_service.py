@@ -67,6 +67,7 @@ async def create_api_key(request: CreateKeyRequest, user: JWTPayload) -> Optiona
 
         async with get_session() as session:
             result = await session.exec(select(User).join(UserKey).where(UserKey.kid == client_kid))
+            
             client_user = result.one_or_none()
 
             if client_user is None:

@@ -1,5 +1,3 @@
-import asyncio
-
 from contextlib import asynccontextmanager
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from sqlmodel.ext.asyncio.session import AsyncSession
