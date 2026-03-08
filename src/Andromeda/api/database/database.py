@@ -6,11 +6,18 @@ from sqlalchemy.ext.asyncio.session import async_sessionmaker
 from Andromeda.config import settings
 
 
-DATABASE_URL = settings.database_url
+engine: AsyncEngine = create_async_engine(
+    settings.database_url,
+    echo=settings.debug,
+    pool_pre_ping=True
+)
 
-engine: AsyncEngine = create_async_engine(DATABASE_URL, echo=True, pool_pre_ping=True)
 
-async_session = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
+async_session = async_sessionmaker(
+    bind=engine,
+    class_=AsyncSession,
+    expire_on_commit=False
+)
 
 
 @asynccontextmanager
