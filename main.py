@@ -26,6 +26,12 @@ from Andromeda.auth.dependancies import get_current_user, require_scope
 
 from Andromeda.auth.hashing import hash_secret
 from Andromeda.services.api_key_service import gen_kid, gen_secret, format_key
+from Andromeda.api.middleware import RateLimiterMiddleware
+from Andromeda.config import settings
+
+
+def parse_trusted_proxies(raw: str) -> set[str]:
+    return {proxy.strip() for proxy in raw.split(",") if proxy.strip()}
 
 
 @asynccontextmanager
@@ -35,6 +41,13 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+
+app.add_middleware(
+    RateLimiterMiddleware,
+    requests_limit=settings.rate_limit_requests,
+    window_seconds=settings.rate_limit_window_seconds,
+    trusted_proxy_ips=parse_trusted_proxies(settings.rate_limit_trusted_proxy_ips),
+)
 
 
 app.include_router(auth.router)

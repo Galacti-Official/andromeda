@@ -11,5 +11,8 @@ class Settings(BaseSettings):
     user_jwt_iss: str
     user_jwt_aud: str
     production: str
+    rate_limit_requests: int = 100
+    rate_limit_window_seconds: int = 60
+    rate_limit_trusted_proxy_ips: str = ""
 
 settings = Settings()  # type: ignore
