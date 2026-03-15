@@ -79,6 +79,10 @@ async def read_users(user: JWTPayload = Depends(require_scope("user:view"))):
         users = result.all()
         return users
     
+@app.get("/test")
+async def test_deploy():
+    raise HTTPException(status_code=404, detail="This deployment test worked!")
+    
 
 @app.post("/genkey", response_model=CreatedKeyResponse)
 async def genkey(key_user_id: UUID, key_name: str):
