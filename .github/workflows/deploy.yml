@@ -22,6 +22,6 @@ jobs:
           username: deploy
           key: ${{ secrets.DEPLOY_KEY }}
           script: |
-            sudo git -C /opt/andromeda pull origin main
+            git -C /opt/andromeda pull origin main
             sudo /opt/andromeda/venv/bin/pip install -e /opt/andromeda
             sudo systemctl restart andromeda
