@@ -29,5 +29,3 @@ class NodeKey(SQLModel, table=True):
     is_active: bool = Field(default=True)
 
     node: Optional["Node"] = Relationship(back_populates="keys")
-
-
