@@ -24,6 +24,5 @@ jobs:
           script: |
             git -C /opt/andromeda pull origin main
             sudo /opt/andromeda/venv/bin/pip install -e /opt/andromeda
-            sudo chown -R andromeda:andromeda /opt/andromeda
-            sudo chown -R deploy:deploy /opt/andromeda/.git
+            sudo /usr/local/bin/andromeda-deploy-fixperms
             sudo systemctl restart andromeda
