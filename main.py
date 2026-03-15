@@ -78,7 +78,8 @@ async def read_users(user: JWTPayload = Depends(require_scope("user:view"))):
         result = await session.exec(select(User))
         users = result.all()
         return users
-    
+
+
 @app.get("/test")
 async def test_deploy():
     raise HTTPException(status_code=404, detail="This deployment test worked!")

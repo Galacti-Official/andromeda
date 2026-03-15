@@ -1,5 +1,4 @@
 alembic==1.18.4
--e git+https://github.com/Galacti-Official/Andromeda-API.git@0dcf501990d10d478da9bbe0e2dd5c1477d00daf#egg=Andromeda
 annotated-doc==0.0.4
 annotated-types==0.7.0
 anyio==4.12.1
