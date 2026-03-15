@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends
 
 from Andromeda.auth.external.user_auth import auth_user_key
 from Andromeda.auth.dependancies import get_current_user
-from Andromeda.schemas.jwt import JWTResponse, JWTPayload
+from Andromeda.schemas.jwt import JWTPayload
 from Andromeda.schemas.key import CreateKeyRequest, CreatedKeyResponse
 from Andromeda.services.api_key_service import create_api_key
 
