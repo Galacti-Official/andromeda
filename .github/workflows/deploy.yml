@@ -22,7 +22,8 @@ jobs:
           username: deploy
           key: ${{ secrets.DEPLOY_KEY }}
           script: |
+            sudo /usr/local/bin/andromeda-deploy-fixperms
             git -C /opt/andromeda pull origin main
             sudo /opt/andromeda/venv/bin/pip install -e /opt/andromeda
-            sudo /usr/local/bin/andromeda-deploy-fixperms
             sudo systemctl restart andromeda
+            sudo /usr/local/bin/andromeda-deploy-resetperms
