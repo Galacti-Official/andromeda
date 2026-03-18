@@ -25,5 +25,6 @@ jobs:
             sudo /usr/local/bin/andromeda-deploy-fixperms
             git -C /opt/andromeda pull origin main
             sudo /opt/andromeda/venv/bin/pip install -e /opt/andromeda
+            cd /opt/andromeda && sudo -E /opt/andromeda/venv/bin/alembic upgrade head
             sudo systemctl restart andromeda
             sudo /usr/local/bin/andromeda-deploy-resetperms
