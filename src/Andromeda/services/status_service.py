@@ -61,7 +61,7 @@ def _build_incident(
 
 
 async def get_status(session: AsyncSession) -> StatusResponse:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     uptime_cutoff = now - timedelta(days=UPTIME_HISTORY_DAYS)
     recent_incident_cutoff = now - timedelta(days=RECENT_INCIDENT_DAYS)
 

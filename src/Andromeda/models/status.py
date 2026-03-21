@@ -45,7 +45,7 @@ class Service(SQLModel, table=True):
 class UptimeHistory(SQLModel, table=True):
     __table_args__ = (
         UniqueConstraint("service_id", "date", name="uq_uptime_service_date"),
-        CheckConstraint("uptime >= 0.0 AND uptime <= 1.0", name="ck_uptime_range"),
+        CheckConstraint("uptime >= 0.0 AND uptime <= 100.0", name="ck_uptime_range")
     )
 
     id: UUID = Field(default_factory=uuid4, primary_key=True)
