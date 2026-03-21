@@ -1,13 +1,17 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from sqlmodel.ext.asyncio.session import AsyncSession
 
 from Andromeda.api.database.init_db import init_db
+from Andromeda.api.database.database import engine
 
 from Andromeda.api.routes import auth, api_keys, status
 
 from Andromeda.api.middleware import RateLimiterMiddleware
 from Andromeda.config import settings
+
+from Andromeda.services.health_service import start_scheduler, stop_scheduler
 
 
 def parse_trusted_proxies(raw: str) -> set[str]:
@@ -17,7 +21,9 @@ def parse_trusted_proxies(raw: str) -> set[str]:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
+    start_scheduler()
     yield
+    stop_scheduler()
 
 
 app = FastAPI(
