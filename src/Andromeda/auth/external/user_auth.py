@@ -2,10 +2,10 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException
 from sqlmodel import select
+from sqlmodel.ext.asyncio.session import AsyncSession as AsyncSession
 import jwt
 
 from Andromeda.auth.hashing import verify_secret, verify_password
-from Andromeda.api.database.database import get_session
 from Andromeda.models.user import User, UserKey
 from Andromeda.schemas.jwt import JWTPayload
 from Andromeda.schemas.user import UserPublic, UserLoginRequest
@@ -15,12 +15,12 @@ from Andromeda.config import settings
 COOKIE_NAME = "session"
 
 
-def issue_token(sub_type: str, sub: str, scopes: list[str] | None) -> str:
+def issue_token(sub_type: str, sub: str, scopes: list[str] | None = None) -> str:
     now = datetime.now(timezone.utc)
     return jwt.encode(
         {
             "sub": f"{sub_type}:{sub}",
-            "scopes": scopes,
+            "scopes": scopes or [],
             "iss": settings.user_jwt_iss,
             "aud": settings.user_jwt_aud,
             "iat": now,
@@ -32,7 +32,7 @@ def issue_token(sub_type: str, sub: str, scopes: list[str] | None) -> str:
     )
 
 
-async def set_session_cookie(response, sub: str, scopes: list[str]):
+def set_session_cookie(response, sub: str, scopes: list[str]):
     token = issue_token(sub_type="user", sub=sub, scopes=scopes)
 
     response.set_cookie(
@@ -45,41 +45,41 @@ async def set_session_cookie(response, sub: str, scopes: list[str]):
     )
 
 
-async def auth_user_key(key: str):
+async def auth_user_key(key: str, session: AsyncSession) -> str:
     key_components = key.split("_")
 
     if len(key_components) != 4 or key_components[0] != "sk" or key_components[1] != "live":
         raise HTTPException(status_code=401, detail="Invalid API key")
     
-    async with get_session() as session:
-        result = await session.exec(select(UserKey).where(UserKey.kid == key_components[2]))
-        user_key = result.one_or_none()
+    result = await session.exec(select(UserKey).where(UserKey.kid == key_components[2]))
+    user_key = result.one_or_none()
 
-        if user_key is None or not user_key.is_active:
-            raise HTTPException(status_code=401, detail="Invalid API key")
+    if user_key is None or not user_key.is_active:
+        raise HTTPException(status_code=401, detail="Invalid API key")
 
-        if not verify_secret(user_key.secret_hash, key_components[3]):
-            raise HTTPException(status_code=401, detail="Invalid API key")
-
+    if not verify_secret(user_key.secret_hash, key_components[3]):
+        raise HTTPException(status_code=401, detail="Invalid API key")
+        
     return issue_token(sub_type="client", sub=user_key.kid, scopes=user_key.scopes)
 
 
-async def auth_user_login(request: UserLoginRequest) -> UserPublic:
-    async with get_session() as session:
-        result = await session.exec(select(User).where(User.email == request.email))
-        user = result.one_or_none()
+async def auth_user_login(request: UserLoginRequest, session: AsyncSession) -> UserPublic:
+    result = await session.exec(select(User).where(User.email == request.email))
+    user = result.one_or_none()
 
-        if user is None or not user.is_active or not verify_password(user.password_hash, request.password):
-            raise HTTPException(status_code=401, detail="Invalid email or password")
+    password_ok = verify_password(
+        user.password_hash if user else settings.dummy_password_hash,
+        request.password
+    )
+
+    if user is None or not user.is_active or not password_ok:
+        raise HTTPException(status_code=401, detail="Invalid email or password")
         
-        return UserPublic(
-            id=user.id,
-            name=user.name,
-            email=user.email,
-            avatar=user.avatar,
-            last_login=user.last_login,
-            created_at=user.created_at
-        )
+    user.last_login = datetime.now(timezone.utc)
+    session.add(user)
+    await session.commit()
+
+    return UserPublic.model_validate(user)
         
 
 def verify_jwt(token: str) -> JWTPayload:
