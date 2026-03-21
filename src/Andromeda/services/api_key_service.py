@@ -42,7 +42,7 @@ def format_key(prefix: str, env: str, kid: str, secret: str) -> str:
     if len(secret) != 43:
         raise ValueError(f"secret must be 43 characters, got {len(secret)}")
     
-    return f"{prefix}_{env}_{kid}_{secret}"
+    return f"{prefix}.{env}.{kid}.{secret}"
  
 
 async def create_api_key(request: CreateKeyRequest, user: JWTPayload, session: AsyncSession) -> CreatedKeyResponse | None:
