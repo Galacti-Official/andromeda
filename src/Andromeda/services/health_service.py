@@ -24,19 +24,19 @@ PARTIAL_OUTAGE_ESCALATION_THRESHOLD = timedelta(minutes=30)
 SERVICE_HEALTH_ENDPOINTS: dict[str, str] = {
     "website": "https://galacti.org/",
     "dashboard": "https://dashboard.galacti.org/",
-    "api": "https://api.galacti.org/",
+    "api": "https://api.galacti.org/"
 }
 
 SERVICE_HEALTHY_CODES: dict[str, set[int]] = {
     "website": {200, 301, 302},
-    "dashboard": {200, 301, 302},
-    "api": {200},
+    "dashboard": {200, 301, 302, 307},
+    "api": {200}
 }
 
 _IMPACT_MAP = {
     ServiceStatus.degraded: IncidentImpact.low,
     ServiceStatus.partial_outage: IncidentImpact.medium,
-    ServiceStatus.major_outage: IncidentImpact.high,
+    ServiceStatus.major_outage: IncidentImpact.high
 }
 
 
