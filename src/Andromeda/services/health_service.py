@@ -9,7 +9,7 @@ from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from Andromeda.api.database.database import engine
-from Andromeda.models.status import Service, ServiceStatus, UptimeHistory
+from Andromeda.models.status import Incident, IncidentImpact, IncidentService, IncidentStatus, IncidentUpdate, Service, ServiceStatus, UptimeHistory
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +23,7 @@ PARTIAL_OUTAGE_ESCALATION_THRESHOLD = timedelta(minutes=30)
 
 SERVICE_HEALTH_ENDPOINTS: dict[str, str] = {
     "website": "https://galacti.org/",
-    "dashboard": "https://app.galacti.org/",
+    "dashboard": "https://dashboard.galacti.org/",
     "api": "https://api.galacti.org/",
 }
 
@@ -31,6 +31,12 @@ SERVICE_HEALTHY_CODES: dict[str, set[int]] = {
     "website": {200, 301, 302},
     "dashboard": {200, 301, 302},
     "api": {200},
+}
+
+_IMPACT_MAP = {
+    ServiceStatus.degraded: IncidentImpact.low,
+    ServiceStatus.partial_outage: IncidentImpact.medium,
+    ServiceStatus.major_outage: IncidentImpact.high,
 }
 
 
@@ -51,6 +57,62 @@ _check_results: dict[datetime, dict[str, list[bool]]] = {}
 
 def _utc_midnight(value: datetime) -> datetime:
     return datetime.combine(value, time.min, tzinfo=timezone.utc)
+
+
+def _incident_id(service_id: str, started_at: datetime) -> str:
+    return f"auto-{service_id}-{started_at.strftime('%Y%m%d%H%M%S')}"
+
+
+async def _open_incident_for_service(session: AsyncSession, service_id: str) -> Incident | None:
+    """Return the unresolved auto-generated incident for a service, if any."""
+    result = await session.exec(
+        select(Incident)
+        .where(
+            col(Incident.id).in_(
+                select(IncidentService.incident_id).where(
+                    IncidentService.service_id == service_id
+                )
+            ),
+            Incident.resolved_at.is_(None),  # type: ignore[union-attr]
+            col(Incident.id).startswith("auto-"),
+        )
+    )
+    return result.first()
+
+
+async def _create_incident(session: AsyncSession, service: Service, status: ServiceStatus, now: datetime) -> None:
+    incident_id = _incident_id(service.id, now)
+    impact = _IMPACT_MAP[status]
+
+    incident = Incident(
+        id=incident_id,
+        title=f"{service.name} is experiencing issues",
+        status=IncidentStatus.investigating,
+        impact=impact,
+        started_at=now,
+    )
+    session.add(incident)
+    session.add(IncidentService(incident_id=incident_id, service_id=service.id))
+    session.add(IncidentUpdate(
+        incident_id=incident_id,
+        message=f"Automated monitoring detected {status} on {service.name}.",
+    ))
+    logger.warning("Created incident %s for service %s (%s)", incident_id, service.id, status)
+
+
+async def _resolve_incident(session: AsyncSession, service: Service, now: datetime) -> None:
+    incident = await _open_incident_for_service(session, service.id)
+    if not incident:
+        return
+
+    incident.status = IncidentStatus.resolved
+    incident.resolved_at = now
+    session.add(incident)
+    session.add(IncidentUpdate(
+        incident_id=incident.id,
+        message=f"Automated monitoring confirmed {service.name} has recovered.",
+    ))
+    logger.info("Resolved incident %s for service %s", incident.id, service.id)
 
 
 async def _check_service(service_id: str, url: str) -> CheckResult:
@@ -85,12 +147,14 @@ async def _update_service_status(session: AsyncSession, service: Service, result
             service.status = ServiceStatus.operational
             service.degraded_since = None
             session.add(service)
+            await _resolve_incident(session, service, now)
     else:
         if service.status == ServiceStatus.operational:
             logger.warning("Service %s unhealthy; marking degraded", service.id)
             service.status = ServiceStatus.degraded
             service.degraded_since = now
             session.add(service)
+            await _create_incident(session, service, ServiceStatus.degraded, now)
         elif (
             service.status == ServiceStatus.degraded
             and service.degraded_since
@@ -99,6 +163,16 @@ async def _update_service_status(session: AsyncSession, service: Service, result
             logger.warning("Service %s degraded too long; escalating to partial_outage", service.id)
             service.status = ServiceStatus.partial_outage
             session.add(service)
+
+            # Update the existing incident's impact rather than creating a new one.
+            incident = await _open_incident_for_service(session, service.id)
+            if incident:
+                incident.impact = IncidentImpact.medium
+                session.add(incident)
+                session.add(IncidentUpdate(
+                    incident_id=incident.id,
+                    message=f"Issue escalated — {service.name} has been degraded for over 30 minutes.",
+                ))
 
 
 # ---------------------------------------------------------------------------
