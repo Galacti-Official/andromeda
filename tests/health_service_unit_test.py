@@ -69,7 +69,10 @@ async def test_unhealthy_operational_service_becomes_degraded():
     session = MagicMock()
     service = make_service(ServiceStatus.operational)
 
-    with patch.object(health_service, "datetime", FrozenDateTime):
+    with (
+        patch.object(health_service, "datetime", FrozenDateTime),
+        patch.object(health_service, "_create_incident", new=AsyncMock()),
+    ):
         await _update_service_status(session, service, make_result(False))
 
     assert service.status == ServiceStatus.degraded
@@ -80,12 +83,16 @@ async def test_unhealthy_operational_service_becomes_degraded():
 @pytest.mark.asyncio
 async def test_unhealthy_degraded_service_escalates_to_partial_outage_after_30_minutes():
     session = MagicMock()
+    session.exec = AsyncMock(return_value=ExecResult(None))
     service = make_service(
         ServiceStatus.degraded,
         degraded_since=FrozenDateTime.current - timedelta(minutes=31),
     )
 
-    with patch.object(health_service, "datetime", FrozenDateTime):
+    with (
+        patch.object(health_service, "datetime", FrozenDateTime),
+        patch.object(health_service, "_open_incident_for_service", new=AsyncMock(return_value=None)),
+    ):
         await _update_service_status(session, service, make_result(False))
 
     assert service.status == ServiceStatus.partial_outage
@@ -101,7 +108,10 @@ async def test_healthy_service_recovers_to_operational():
         degraded_since=FrozenDateTime.current - timedelta(minutes=10),
     )
 
-    with patch.object(health_service, "datetime", FrozenDateTime):
+    with (
+        patch.object(health_service, "datetime", FrozenDateTime),
+        patch.object(health_service, "_resolve_incident", new=AsyncMock()),
+    ):
         await _update_service_status(session, service, make_result(True))
 
     assert service.status == ServiceStatus.operational
