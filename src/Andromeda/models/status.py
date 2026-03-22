@@ -1,4 +1,4 @@
-from sqlmodel import Float, SQLModel, Column, DateTime, Date, CheckConstraint, UniqueConstraint, Enum as SAEnum, Field, text
+from sqlmodel import Float, SQLModel, Column, DateTime, CheckConstraint, UniqueConstraint, Enum as SAEnum, Field, text
 from uuid import UUID, uuid4
 from datetime import datetime, timezone
 from enum import StrEnum

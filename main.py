@@ -13,6 +13,34 @@ from Andromeda.config import settings
 
 from Andromeda.services.health_service import start_scheduler, stop_scheduler
 
+from Andromeda.models.status import Service, ServiceGroup, ServiceStatus
+
+
+INITIAL_GROUPS = [
+    ServiceGroup(id="core", name="Core Services"),
+]
+
+INITIAL_SERVICES = [
+    Service(id="website", group_id="core", name="Website", status=ServiceStatus.operational),
+    Service(id="dashboard", group_id="core", name="Dashboard", status=ServiceStatus.operational),
+    Service(id="api", group_id="core", name="API", status=ServiceStatus.operational),
+]
+
+
+async def seed_services() -> None:
+    async with AsyncSession(engine) as session:
+        for group in INITIAL_GROUPS:
+            existing = await session.get(ServiceGroup, group.id)
+            if not existing:
+                session.add(group)
+
+        for service in INITIAL_SERVICES:
+            existing = await session.get(Service, service.id)
+            if not existing:
+                session.add(service)
+
+        await session.commit()
+        
 
 def parse_trusted_proxies(raw: str) -> set[str]:
     return {proxy.strip() for proxy in raw.split(",") if proxy.strip()}
@@ -21,6 +49,7 @@ def parse_trusted_proxies(raw: str) -> set[str]:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
+    await seed_services()
     start_scheduler()
     yield
     stop_scheduler()
