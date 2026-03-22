@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from sqlmodel.ext.asyncio.session import AsyncSession
+from prometheus_fastapi_instrumentator import Instrumentator
 
 from Andromeda.api.database.init_db import init_db
 from Andromeda.api.database.database import engine
@@ -61,6 +62,9 @@ app = FastAPI(
     docs_url=None if settings.production else "/docs",
     redoc_url=None if settings.production else "/redoc",
 )
+
+
+Instrumentator().instrument(app).expose(app, endpoint="/metrics")
 
 
 app.add_middleware(
