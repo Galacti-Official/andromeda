@@ -1,3 +1,4 @@
+import sqlalchemy as sa
 from sqlmodel import Float, SQLModel, Column, DateTime, CheckConstraint, UniqueConstraint, Enum as SAEnum, Field, text
 from uuid import UUID, uuid4
 from datetime import datetime, timezone
@@ -40,6 +41,8 @@ class Service(SQLModel, table=True):
         default=None,
         sa_column=Column(DateTime(timezone=True), nullable=True)
     )
+    check_url: str | None = Field(default=None, max_length=512, nullable=True)
+    healthy_codes: list[int] | None = Field(default=None, sa_column=Column(sa.JSON, nullable=True))
 
 
 class UptimeHistory(SQLModel, table=True):
@@ -99,3 +102,13 @@ class IncidentUpdate(SQLModel, table=True):
             server_default=text("now()")
         )
     )
+
+
+class ServiceCheckHistory(SQLModel, table=True):
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    service_id: str = Field(foreign_key="service.id", index=True, max_length=64)
+    checked_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False, index=True))
+    healthy: bool = Field(nullable=False)
+    response_time_ms: float | None = Field(default=None, sa_column=Column(Float, nullable=True))
+    status_code: int | None = Field(default=None, nullable=True)
+    error: str | None = Field(default=None, nullable=True)

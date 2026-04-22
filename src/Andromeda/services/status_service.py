@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -32,6 +33,17 @@ UPTIME_HISTORY_DAYS = 90
 RECENT_INCIDENT_DAYS = 30
 REFRESH_INTERVAL_MINUTES = 5
 
+_CACHE_TTL = timedelta(minutes=REFRESH_INTERVAL_MINUTES)
+
+
+@dataclass
+class _StatusCache:
+    response: StatusResponse
+    expires_at: datetime
+
+
+_cache: _StatusCache | None = None
+
 
 def _worst_status(statuses: list[ServiceStatus]) -> ServiceStatus:
     for status in STATUS_PRIORITY:
@@ -60,10 +72,11 @@ def _build_incident(
     )
 
 
-async def get_status(session: AsyncSession) -> StatusResponse:
-    now = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-    uptime_cutoff = now - timedelta(days=UPTIME_HISTORY_DAYS)
-    recent_incident_cutoff = now - timedelta(days=RECENT_INCIDENT_DAYS)
+async def _fetch_status(session: AsyncSession) -> StatusResponse:
+    now = datetime.now(timezone.utc)
+    today_midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    uptime_cutoff = today_midnight - timedelta(days=UPTIME_HISTORY_DAYS)
+    recent_incident_cutoff = today_midnight - timedelta(days=RECENT_INCIDENT_DAYS)
 
     # Fetch and materialise all results immediately
     groups = (await session.exec(
@@ -138,13 +151,12 @@ async def get_status(session: AsyncSession) -> StatusResponse:
         for g in groups
     ]
 
-    # Calculate summary status
     all_statuses = [s.status for s in services]
     overall_status = _worst_status(all_statuses)
 
     meta = MetaSchema(
         updated_at=now,
-        next_update_at=now + timedelta(minutes=REFRESH_INTERVAL_MINUTES),
+        next_update_at=now + _CACHE_TTL,
     )
     summary = SummarySchema(status=overall_status, message=STATUS_MESSAGES[overall_status])
 
@@ -157,3 +169,13 @@ async def get_status(session: AsyncSession) -> StatusResponse:
             recent=[_build_incident(i, updates_by_incident, services_by_incident) for i in recent_incidents],
         )
     )
+
+
+async def get_status(session: AsyncSession) -> StatusResponse:
+    global _cache
+    now = datetime.now(timezone.utc)
+    if _cache is not None and now < _cache.expires_at:
+        return _cache.response
+    response = await _fetch_status(session)
+    _cache = _StatusCache(response=response, expires_at=now + _CACHE_TTL)
+    return response
