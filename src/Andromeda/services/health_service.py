@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from datetime import datetime, time, timedelta, timezone
+from time import perf_counter
 from typing import NamedTuple
 
 import httpx
@@ -23,6 +24,7 @@ logger = logging.getLogger(__name__)
 
 CHECK_INTERVAL_MINUTES = 10
 CHECK_TIMEOUT_SECONDS = 10
+CHECK_CONCURRENCY_LIMIT = 20
 PARTIAL_OUTAGE_ESCALATION_THRESHOLD = timedelta(minutes=30)
 MAJOR_OUTAGE_ESCALATION_THRESHOLD = timedelta(hours=2)
 CHECK_HISTORY_RETENTION_DAYS = 7
@@ -51,10 +53,10 @@ def _utc_midnight(value: datetime) -> datetime:
 
 
 def _incident_id(service_id: str, started_at: datetime) -> str:
-    return f"auto-{service_id}-{started_at.strftime('%Y%m%d%H%M%S')}"
+    return f"auto-{service_id}-{started_at.strftime('%Y%m%d%H%M%S%f')}"
 
 
-async def _open_incident_for_service(session: AsyncSession, service_id: str) -> Incident | None:
+async def _unresolved_auto_incident_for_service(session: AsyncSession, service_id: str) -> Incident | None:
     """Return the unresolved auto-generated incident for a service, if any."""
     result = await session.exec(
         select(Incident)
@@ -73,7 +75,7 @@ async def _open_incident_for_service(session: AsyncSession, service_id: str) -> 
 
 async def _create_incident(session: AsyncSession, service: Service, status: ServiceStatus, now: datetime) -> None:
     incident_id = _incident_id(service.id, now)
-    impact = _IMPACT_MAP[status]
+    impact = _IMPACT_MAP.get(status, IncidentImpact.low)
 
     incident = Incident(
         id=incident_id,
@@ -92,7 +94,7 @@ async def _create_incident(session: AsyncSession, service: Service, status: Serv
 
 
 async def _resolve_incident(session: AsyncSession, service: Service, now: datetime) -> None:
-    incident = await _open_incident_for_service(session, service.id)
+    incident = await _unresolved_auto_incident_for_service(session, service.id)
     if not incident:
         return
 
@@ -106,25 +108,31 @@ async def _resolve_incident(session: AsyncSession, service: Service, now: dateti
     logger.info("Resolved incident %s for service %s", incident.id, service.id)
 
 
-async def _check_service(service_id: str, url: str, healthy_codes: set[int]) -> CheckResult:
-    try:
-        async with httpx.AsyncClient(timeout=CHECK_TIMEOUT_SECONDS, follow_redirects=False) as client:
-            start = datetime.now(timezone.utc)
+async def _check_service(
+    client: httpx.AsyncClient,
+    semaphore: asyncio.Semaphore,
+    service_id: str,
+    url: str,
+    healthy_codes: set[int],
+) -> CheckResult:
+    async with semaphore:
+        try:
+            start = perf_counter()
             response = await client.get(url)
-            elapsed_ms = (datetime.now(timezone.utc) - start).total_seconds() * 1000
+            elapsed_ms = (perf_counter() - start) * 1000
 
-        healthy = response.status_code in healthy_codes
-        return CheckResult(
-            service_id=service_id,
-            healthy=healthy,
-            response_time_ms=round(elapsed_ms, 2),
-            status_code=response.status_code,
-            error=None,
-        )
-    except httpx.TimeoutException:
-        return CheckResult(service_id=service_id, healthy=False, response_time_ms=None, status_code=None, error="timeout")
-    except httpx.RequestError as e:
-        return CheckResult(service_id=service_id, healthy=False, response_time_ms=None, status_code=None, error=str(e))
+            healthy = response.status_code in healthy_codes
+            return CheckResult(
+                service_id=service_id,
+                healthy=healthy,
+                response_time_ms=round(elapsed_ms, 2),
+                status_code=response.status_code,
+                error=None,
+            )
+        except httpx.TimeoutException:
+            return CheckResult(service_id=service_id, healthy=False, response_time_ms=None, status_code=None, error="timeout")
+        except httpx.RequestError as e:
+            return CheckResult(service_id=service_id, healthy=False, response_time_ms=None, status_code=None, error=str(e))
 
 
 async def _update_service_status(session: AsyncSession, service: Service, result: CheckResult) -> None:
@@ -138,7 +146,7 @@ async def _update_service_status(session: AsyncSession, service: Service, result
             service.status = ServiceStatus.operational
             service.degraded_since = None
             session.add(service)
-            incident = await _open_incident_for_service(session, service.id)
+            incident = await _unresolved_auto_incident_for_service(session, service.id)
             if incident:
                 incident.status = IncidentStatus.monitoring
                 session.add(incident)
@@ -148,7 +156,7 @@ async def _update_service_status(session: AsyncSession, service: Service, result
                 ))
         else:
             # Already operational: close out any incident still in monitoring state.
-            incident = await _open_incident_for_service(session, service.id)
+            incident = await _unresolved_auto_incident_for_service(session, service.id)
             if incident and incident.status == IncidentStatus.monitoring:
                 await _resolve_incident(session, service, now)
     else:
@@ -166,7 +174,7 @@ async def _update_service_status(session: AsyncSession, service: Service, result
             logger.warning("Service %s degraded too long; escalating to partial_outage", service.id)
             service.status = ServiceStatus.partial_outage
             session.add(service)
-            incident = await _open_incident_for_service(session, service.id)
+            incident = await _unresolved_auto_incident_for_service(session, service.id)
             if incident:
                 incident.impact = IncidentImpact.medium
                 session.add(incident)
@@ -174,6 +182,8 @@ async def _update_service_status(session: AsyncSession, service: Service, result
                     incident_id=incident.id,
                     message=f"Issue escalated — {service.name} has been degraded for over 30 minutes.",
                 ))
+            else:
+                await _create_incident(session, service, ServiceStatus.partial_outage, now)
         elif (
             service.status == ServiceStatus.partial_outage
             and service.degraded_since
@@ -182,7 +192,7 @@ async def _update_service_status(session: AsyncSession, service: Service, result
             logger.warning("Service %s in partial outage too long; escalating to major_outage", service.id)
             service.status = ServiceStatus.major_outage
             session.add(service)
-            incident = await _open_incident_for_service(session, service.id)
+            incident = await _unresolved_auto_incident_for_service(session, service.id)
             if incident:
                 incident.impact = IncidentImpact.high
                 session.add(incident)
@@ -190,6 +200,8 @@ async def _update_service_status(session: AsyncSession, service: Service, result
                     incident_id=incident.id,
                     message=f"Major outage — {service.name} has been in partial outage for over 2 hours.",
                 ))
+            else:
+                await _create_incident(session, service, ServiceStatus.major_outage, now)
 
 
 # ---------------------------------------------------------------------------
@@ -207,16 +219,22 @@ async def run_health_checks() -> None:
             return
 
         logger.info("Running health checks for %d services", len(monitorable))
-        check_batch = [
-            _check_service(s.id, url, set(s.healthy_codes or [200]))
-            for s, url in monitorable
-        ]
-        results = await asyncio.gather(*check_batch, return_exceptions=True)
+        semaphore = asyncio.Semaphore(CHECK_CONCURRENCY_LIMIT)
+        async with httpx.AsyncClient(timeout=CHECK_TIMEOUT_SECONDS, follow_redirects=False) as client:
+            check_batch = [
+                _check_service(client, semaphore, s.id, url, set(s.healthy_codes or [200]))
+                for s, url in monitorable
+            ]
+            results = await asyncio.gather(*check_batch, return_exceptions=True)
         now = datetime.now(timezone.utc)
 
         for (service, _url), result in zip(monitorable, results, strict=True):
             if isinstance(result, BaseException):
-                logger.error("Unexpected error checking service %s: %s", service.id, result, exc_info=result)
+                logger.error(
+                    "Unexpected error checking service %s",
+                    service.id,
+                    exc_info=(type(result), result, result.__traceback__),
+                )
                 continue
 
             logger.info(
@@ -240,7 +258,7 @@ async def run_health_checks() -> None:
 
 
 async def write_daily_uptime() -> None:
-    """Calculate and persist uptime percentage for the previous day from DB check history."""
+    """Calculate and persist uptime for the previous day; based on available checks only."""
     yesterday = _utc_midnight(datetime.now(timezone.utc) - timedelta(days=1))
     today = yesterday + timedelta(days=1)
     logger.info("Writing daily uptime for %s", yesterday.date())
@@ -310,7 +328,14 @@ def start_scheduler() -> None:
         return
 
     _scheduler = AsyncIOScheduler(timezone="UTC")
-    _scheduler.add_job(run_health_checks, "interval", minutes=CHECK_INTERVAL_MINUTES, id="health_checks")
+    _scheduler.add_job(
+        run_health_checks,
+        "interval",
+        minutes=CHECK_INTERVAL_MINUTES,
+        id="health_checks",
+        max_instances=1,
+        coalesce=True,
+    )
     _scheduler.add_job(write_daily_uptime, "cron", hour=0, minute=0, id="daily_uptime")
     _scheduler.add_job(cleanup_check_history, "cron", hour=1, minute=0, id="cleanup_check_history")
     _scheduler.start()
