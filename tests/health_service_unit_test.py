@@ -116,7 +116,8 @@ async def test_unhealthy_degraded_service_escalates_to_partial_outage_after_30_m
 
     with (
         patch.object(health_service, "datetime", FrozenDateTime),
-        patch.object(health_service, "_open_incident_for_service", new=AsyncMock(return_value=None)),
+        patch.object(health_service, "_unresolved_auto_incident_for_service", new=AsyncMock(return_value=None)),
+        patch.object(health_service, "_create_incident", new=AsyncMock()),
     ):
         await _update_service_status(session, service, make_result(False))
 
@@ -150,7 +151,8 @@ async def test_unhealthy_partial_outage_escalates_to_major_outage_after_2_hours(
 
     with (
         patch.object(health_service, "datetime", FrozenDateTime),
-        patch.object(health_service, "_open_incident_for_service", new=AsyncMock(return_value=None)),
+        patch.object(health_service, "_unresolved_auto_incident_for_service", new=AsyncMock(return_value=None)),
+        patch.object(health_service, "_create_incident", new=AsyncMock()),
     ):
         await _update_service_status(session, service, make_result(False))
 
@@ -189,7 +191,7 @@ async def test_recovery_moves_incident_to_monitoring():
 
     with (
         patch.object(health_service, "datetime", FrozenDateTime),
-        patch.object(health_service, "_open_incident_for_service", new=AsyncMock(return_value=incident)),
+        patch.object(health_service, "_unresolved_auto_incident_for_service", new=AsyncMock(return_value=incident)),
     ):
         await _update_service_status(session, service, make_result(True))
 
@@ -210,7 +212,7 @@ async def test_recovery_without_open_incident_only_updates_service():
 
     with (
         patch.object(health_service, "datetime", FrozenDateTime),
-        patch.object(health_service, "_open_incident_for_service", new=AsyncMock(return_value=None)),
+        patch.object(health_service, "_unresolved_auto_incident_for_service", new=AsyncMock(return_value=None)),
     ):
         await _update_service_status(session, service, make_result(True))
 
@@ -228,7 +230,7 @@ async def test_second_clean_check_resolves_monitoring_incident():
 
     with (
         patch.object(health_service, "datetime", FrozenDateTime),
-        patch.object(health_service, "_open_incident_for_service", new=AsyncMock(return_value=incident)),
+        patch.object(health_service, "_unresolved_auto_incident_for_service", new=AsyncMock(return_value=incident)),
         patch.object(health_service, "_resolve_incident", new=AsyncMock()) as mock_resolve,
     ):
         await _update_service_status(session, service, make_result(True))
@@ -243,7 +245,7 @@ async def test_clean_check_on_already_operational_service_with_no_incident_is_no
 
     with (
         patch.object(health_service, "datetime", FrozenDateTime),
-        patch.object(health_service, "_open_incident_for_service", new=AsyncMock(return_value=None)),
+        patch.object(health_service, "_unresolved_auto_incident_for_service", new=AsyncMock(return_value=None)),
     ):
         await _update_service_status(session, service, make_result(True))
 
