@@ -1,3 +1,4 @@
+import asyncio
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from sqlmodel import col, select
@@ -34,6 +35,7 @@ RECENT_INCIDENT_DAYS = 90
 REFRESH_INTERVAL_MINUTES = 5
 
 _CACHE_TTL = timedelta(minutes=REFRESH_INTERVAL_MINUTES)
+_cache_lock = asyncio.Lock()
 
 
 @dataclass
@@ -171,11 +173,21 @@ async def _fetch_status(session: AsyncSession) -> StatusResponse:
     )
 
 
+def invalidate_cache() -> None:
+    """Invalidate cache after any write that changes status or incident data."""
+    global _cache
+    _cache = None
+
+
 async def get_status(session: AsyncSession) -> StatusResponse:
     global _cache
     now = datetime.now(timezone.utc)
     if _cache is not None and now < _cache.expires_at:
         return _cache.response
-    response = await _fetch_status(session)
-    _cache = _StatusCache(response=response, expires_at=now + _CACHE_TTL)
-    return response
+    async with _cache_lock:
+        now = datetime.now(timezone.utc)
+        if _cache is not None and now < _cache.expires_at:
+            return _cache.response
+        response = await _fetch_status(session)
+        _cache = _StatusCache(response=response, expires_at=now + _CACHE_TTL)
+    return _cache.response
