@@ -86,7 +86,6 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(api_keys.router)
 app.include_router(status.router)
-app.include_router(notifications.router)
 
 
 # --------------- External ---------------
