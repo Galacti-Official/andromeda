@@ -69,9 +69,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index('ix_servicecheckhistory_checked_at', table_name='servicecheckhistory')
-    op.drop_index('ix_servicecheckhistory_service_id', table_name='servicecheckhistory')
-    op.drop_table('servicecheckhistory')
+    op.drop_index('ix_servicecheckhistory_checked_at', table_name='servicecheckhistory', if_not_exists=True)
+    op.drop_index('ix_servicecheckhistory_service_id', table_name='servicecheckhistory', if_not_exists=True)
+    op.drop_table('servicecheckhistory', if_not_exists=True)
 
     for table, constraint in _EXISTING_FK_TABLES:
         op.drop_constraint(constraint, table, type_="foreignkey")
