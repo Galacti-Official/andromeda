@@ -1,7 +1,6 @@
 from logging.config import fileConfig
 import asyncio
 
-from sqlalchemy import engine_from_config
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlmodel import SQLModel
@@ -11,6 +10,10 @@ from alembic import context
 
 from Andromeda.config import settings
 from Andromeda.models.user import User, UserKey
+from Andromeda.models.status import (  # noqa: F401 — ensures metadata is populated for autogenerate
+    Incident, IncidentImpact, IncidentService, IncidentStatus, IncidentUpdate,
+    Service, ServiceCheckHistory, ServiceGroup, ServiceStatus, UptimeHistory,
+)
 
 
 

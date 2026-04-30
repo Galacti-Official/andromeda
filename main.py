@@ -22,9 +22,12 @@ INITIAL_GROUPS = [
 ]
 
 INITIAL_SERVICES = [
-    Service(id="website", group_id="core", name="Website", status=ServiceStatus.operational),
-    Service(id="dashboard", group_id="core", name="Dashboard", status=ServiceStatus.operational),
-    Service(id="api", group_id="core", name="API", status=ServiceStatus.operational),
+    Service(id="website", group_id="core", name="Website", status=ServiceStatus.operational,
+            check_url="https://galacti.org/", healthy_codes=[200, 301, 302]),
+    Service(id="dashboard", group_id="core", name="Dashboard", status=ServiceStatus.operational,
+            check_url="https://dashboard.galacti.org/", healthy_codes=[200, 301, 302, 307]),
+    Service(id="api", group_id="core", name="API", status=ServiceStatus.operational,
+            check_url="https://api.galacti.org/", healthy_codes=[200]),
 ]
 
 
@@ -39,6 +42,11 @@ async def seed_services() -> None:
             existing = await session.get(Service, service.id)
             if not existing:
                 session.add(service)
+            else:
+                # Always sync check config so URL/code changes take effect on redeploy.
+                existing.check_url = service.check_url
+                existing.healthy_codes = service.healthy_codes
+                session.add(existing)
 
         await session.commit()
         
@@ -79,10 +87,6 @@ app.include_router(auth.router)
 app.include_router(api_keys.router)
 app.include_router(status.router)
 
-
-# --------------- External ---------------
-# This section contains external and public functions.
-# They are intended to be publicly accessible at all times.
 
 @app.get("/")
 async def root_get():

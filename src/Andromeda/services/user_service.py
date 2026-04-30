@@ -4,9 +4,6 @@ from fastapi import HTTPException
 from sqlalchemy.exc import IntegrityError
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-# Database
-from Andromeda.api.database.database import get_session
-
 # Security
 from Andromeda.auth.hashing import hash_password
 

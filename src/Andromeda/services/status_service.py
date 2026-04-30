@@ -1,3 +1,5 @@
+import asyncio
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -21,6 +23,9 @@ STATUS_PRIORITY = [
     ServiceStatus.operational,
 ]
 
+# O(1) rank lookup; lower rank = worse status
+_STATUS_RANK: dict[ServiceStatus, int] = {s: i for i, s in enumerate(STATUS_PRIORITY)}
+
 STATUS_MESSAGES: dict[ServiceStatus, str] = {
     ServiceStatus.major_outage: "We are experiencing a major outage affecting multiple services.",
     ServiceStatus.partial_outage: "Some services are experiencing an outage.",
@@ -32,12 +37,23 @@ UPTIME_HISTORY_DAYS = 90
 RECENT_INCIDENT_DAYS = 90
 REFRESH_INTERVAL_MINUTES = 5
 
+_CACHE_TTL = timedelta(minutes=REFRESH_INTERVAL_MINUTES)
+_cache_lock = asyncio.Lock()
+
+
+@dataclass
+class _StatusCache:
+    response: StatusResponse
+    expires_at: datetime
+
+
+_cache: _StatusCache | None = None
+
 
 def _worst_status(statuses: list[ServiceStatus]) -> ServiceStatus:
-    for status in STATUS_PRIORITY:
-        if status in statuses:
-            return status
-    return ServiceStatus.operational
+    if not statuses:
+        return ServiceStatus.operational
+    return min(statuses, key=lambda s: _STATUS_RANK.get(s, len(STATUS_PRIORITY)))
 
 
 def _build_incident(
@@ -60,12 +76,12 @@ def _build_incident(
     )
 
 
-async def get_status(session: AsyncSession) -> StatusResponse:
-    now = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-    uptime_cutoff = now - timedelta(days=UPTIME_HISTORY_DAYS)
-    recent_incident_cutoff = now - timedelta(days=RECENT_INCIDENT_DAYS)
+async def _fetch_status(session: AsyncSession) -> StatusResponse:
+    now = datetime.now(timezone.utc)
+    today_midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    uptime_cutoff = today_midnight - timedelta(days=UPTIME_HISTORY_DAYS)
+    recent_incident_cutoff = today_midnight - timedelta(days=RECENT_INCIDENT_DAYS)
 
-    # Fetch and materialise all results immediately
     groups = (await session.exec(
         select(ServiceGroup).order_by(col(ServiceGroup.name).asc(), col(ServiceGroup.id).asc())
     )).all()
@@ -89,34 +105,39 @@ async def get_status(session: AsyncSession) -> StatusResponse:
         )
     )).all()
 
-    incident_ids = [i.id for i in active_incidents] + [i.id for i in recent_incidents]
+    _relevant_incident = (
+        col(Incident.resolved_at).is_(None) |
+        (col(Incident.resolved_at) >= recent_incident_cutoff)
+    )
 
     updates_by_incident: dict[str, list[IncidentUpdate]] = {}
-    updates = (await session.exec(
+    for update in (await session.exec(
         select(IncidentUpdate)
-        .where(col(IncidentUpdate.incident_id).in_(incident_ids))
-        .order_by(col(IncidentUpdate.created_at).desc())
-    )).all() if incident_ids else []
-    for update in updates:
+        .join(Incident, col(IncidentUpdate.incident_id) == col(Incident.id))
+        .where(_relevant_incident)
+    )).all():
         updates_by_incident.setdefault(update.incident_id, []).append(update)
+    for bucket in updates_by_incident.values():
+        bucket.sort(key=lambda u: u.created_at, reverse=True)
 
     services_by_incident: dict[str, list[str]] = {}
-    incident_services = (await session.exec(
-        select(IncidentService).where(col(IncidentService.incident_id).in_(incident_ids))
-    )).all() if incident_ids else []
-    for row in incident_services:
+    for row in (await session.exec(
+        select(IncidentService)
+        .join(Incident, col(IncidentService.incident_id) == col(Incident.id))
+        .where(_relevant_incident)
+    )).all():
         services_by_incident.setdefault(row.incident_id, []).append(row.service_id)
 
-    # Build lookup dicts
     uptime_by_service: dict[str, list[UptimeHistory]] = {}
     for u in uptime_rows:
         uptime_by_service.setdefault(u.service_id, []).append(u)
+    for bucket in uptime_by_service.values():
+        bucket.sort(key=lambda u: u.date)
 
     services_by_group: dict[str, list[Service]] = {}
     for s in services:
         services_by_group.setdefault(s.group_id, []).append(s)
 
-    # Assemble groups and services
     assembled_groups = [
         GroupSchema(
             id=g.id,
@@ -138,13 +159,11 @@ async def get_status(session: AsyncSession) -> StatusResponse:
         for g in groups
     ]
 
-    # Calculate summary status
-    all_statuses = [s.status for s in services]
-    overall_status = _worst_status(all_statuses)
+    overall_status = _worst_status([s.status for s in services])
 
     meta = MetaSchema(
         updated_at=now,
-        next_update_at=now + timedelta(minutes=REFRESH_INTERVAL_MINUTES),
+        next_update_at=now + _CACHE_TTL,
     )
     summary = SummarySchema(status=overall_status, message=STATUS_MESSAGES[overall_status])
 
@@ -157,3 +176,23 @@ async def get_status(session: AsyncSession) -> StatusResponse:
             recent=[_build_incident(i, updates_by_incident, services_by_incident) for i in recent_incidents],
         )
     )
+
+
+def invalidate_cache() -> None:
+    """Invalidate cache after any write that changes status or incident data."""
+    global _cache
+    _cache = None
+
+
+async def get_status(session: AsyncSession) -> StatusResponse:
+    global _cache
+    now = datetime.now(timezone.utc)
+    if _cache is not None and now < _cache.expires_at:
+        return _cache.response
+    async with _cache_lock:
+        now = datetime.now(timezone.utc)
+        if _cache is not None and now < _cache.expires_at:
+            return _cache.response
+        response = await _fetch_status(session)
+        _cache = _StatusCache(response=response, expires_at=now + _CACHE_TTL)
+    return _cache.response
