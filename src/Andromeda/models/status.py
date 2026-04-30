@@ -105,8 +105,12 @@ class IncidentUpdate(SQLModel, table=True):
 
 
 class ServiceCheckHistory(SQLModel, table=True):
+    __table_args__ = (
+        sa.Index("ix_servicecheckhistory_service_checked", "service_id", "checked_at"),
+    )
+
     id: UUID = Field(default_factory=uuid4, primary_key=True)
-    service_id: str = Field(foreign_key="service.id", index=True, max_length=64)
+    service_id: str = Field(foreign_key="service.id", index=False, max_length=64)
     checked_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False, index=True))
     healthy: bool = Field(nullable=False)
     response_time_ms: float | None = Field(default=None, sa_column=Column(Float, nullable=True))

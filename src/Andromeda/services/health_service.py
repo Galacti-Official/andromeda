@@ -28,6 +28,7 @@ CHECK_CONCURRENCY_LIMIT = 20
 PARTIAL_OUTAGE_ESCALATION_THRESHOLD = timedelta(minutes=30)
 MAJOR_OUTAGE_ESCALATION_THRESHOLD = timedelta(hours=2)
 CHECK_HISTORY_RETENTION_DAYS = 7
+INCIDENT_FAILURE_THRESHOLD = 2  # consecutive failures before an incident is opened
 
 _IMPACT_MAP = {
     ServiceStatus.degraded: IncidentImpact.low,
@@ -54,6 +55,23 @@ def _utc_midnight(value: datetime) -> datetime:
 
 def _incident_id(service_id: str, started_at: datetime) -> str:
     return f"auto-{service_id}-{started_at.strftime('%Y%m%d%H%M%S%f')}"
+
+
+async def _recent_consecutive_failures(session: AsyncSession, service_id: str, limit: int) -> int:
+    """Count consecutive unhealthy committed checks for a service, newest first."""
+    checks = (await session.exec(
+        select(ServiceCheckHistory)
+        .where(col(ServiceCheckHistory.service_id) == service_id)
+        .order_by(col(ServiceCheckHistory.checked_at).desc())
+        .limit(limit)
+    )).all()
+    count = 0
+    for check in checks:
+        if not check.healthy:
+            count += 1
+        else:
+            break
+    return count
 
 
 async def _unresolved_auto_incident_for_service(session: AsyncSession, service_id: str) -> Incident | None:
@@ -135,9 +153,7 @@ async def _check_service(
             return CheckResult(service_id=service_id, healthy=False, response_time_ms=None, status_code=None, error=str(e))
 
 
-async def _update_service_status(session: AsyncSession, service: Service, result: CheckResult) -> None:
-    now = datetime.now(timezone.utc)
-
+async def _update_service_status(session: AsyncSession, service: Service, result: CheckResult, now: datetime) -> None:
     if result.healthy:
         if service.status != ServiceStatus.operational:
             # First clean check after an outage: recover service and move incident to monitoring.
@@ -161,11 +177,18 @@ async def _update_service_status(session: AsyncSession, service: Service, result
                 await _resolve_incident(session, service, now)
     else:
         if service.status == ServiceStatus.operational:
-            logger.warning("Service %s unhealthy; marking degraded", service.id)
-            service.status = ServiceStatus.degraded
-            service.degraded_since = now
-            session.add(service)
-            await _create_incident(session, service, ServiceStatus.degraded, now)
+            prior = await _recent_consecutive_failures(session, service.id, INCIDENT_FAILURE_THRESHOLD - 1)
+            if prior >= INCIDENT_FAILURE_THRESHOLD - 1:
+                logger.warning("Service %s unhealthy; marking degraded", service.id)
+                service.status = ServiceStatus.degraded
+                service.degraded_since = now
+                session.add(service)
+                await _create_incident(session, service, ServiceStatus.degraded, now)
+            else:
+                logger.info(
+                    "Service %s unhealthy (failure %d/%d); waiting for consecutive failures before escalating",
+                    service.id, prior + 1, INCIDENT_FAILURE_THRESHOLD,
+                )
         elif (
             service.status == ServiceStatus.degraded
             and service.degraded_since
@@ -252,7 +275,10 @@ async def run_health_checks() -> None:
                 error=result.error,
             ))
 
-            await _update_service_status(session, service, result)
+            try:
+                await _update_service_status(session, service, result, now)
+            except Exception:
+                logger.error("Failed to update status for service %s", service.id, exc_info=True)
 
         await session.commit()
 
@@ -306,11 +332,11 @@ async def cleanup_check_history() -> None:
     """Delete check history records older than the retention window."""
     cutoff = datetime.now(timezone.utc) - timedelta(days=CHECK_HISTORY_RETENTION_DAYS)
     async with AsyncSession(engine) as session:
-        await session.exec(
+        result = await session.exec(
             sa_delete(ServiceCheckHistory).where(col(ServiceCheckHistory.checked_at) < cutoff)
         )
         await session.commit()
-    logger.info("Cleaned up check history older than %d days", CHECK_HISTORY_RETENTION_DAYS)
+    logger.info("Cleaned up %d check history records older than %d days", result.rowcount, CHECK_HISTORY_RETENTION_DAYS)
 
 
 # ---------------------------------------------------------------------------

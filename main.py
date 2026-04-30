@@ -7,7 +7,7 @@ from prometheus_fastapi_instrumentator import Instrumentator
 from Andromeda.api.database.init_db import init_db
 from Andromeda.api.database.database import engine
 
-from Andromeda.api.routes import auth, api_keys, status, notifications
+from Andromeda.api.routes import auth, api_keys, status
 
 from Andromeda.api.middleware import RateLimiterMiddleware
 from Andromeda.config import settings
@@ -87,10 +87,6 @@ app.include_router(auth.router)
 app.include_router(api_keys.router)
 app.include_router(status.router)
 
-
-# --------------- External ---------------
-# This section contains external and public functions.
-# They are intended to be publicly accessible at all times.
 
 @app.get("/")
 async def root_get():
