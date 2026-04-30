@@ -56,8 +56,8 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint('id'),
         if_not_exists=True
     )
-    op.create_index('ix_servicecheckhistory_service_id', 'servicecheckhistory', ['service_id'], unique=False)
-    op.create_index('ix_servicecheckhistory_checked_at', 'servicecheckhistory', ['checked_at'], unique=False)
+    op.create_index('ix_servicecheckhistory_service_id', 'servicecheckhistory', ['service_id'], unique=False, if_not_exists=True)
+    op.create_index('ix_servicecheckhistory_checked_at', 'servicecheckhistory', ['checked_at'], unique=False, if_not_exists=True)
 
     for table, constraint in _EXISTING_FK_TABLES:
         op.drop_constraint(constraint, table, type_="foreignkey")
@@ -65,7 +65,7 @@ def upgrade() -> None:
     _update_ids(_RENAMES)
 
     for table, _ in _EXISTING_FK_TABLES:
-        op.create_foreign_key(None, table, "service", ["service_id"], ["id"])
+        op.create_foreign_key(None, table, "service", ["service_id"], ["id"], if_not_exists=True)
 
 
 def downgrade() -> None:
@@ -85,4 +85,4 @@ def downgrade() -> None:
     _update_ids(reversed_renames, tables=_EXISTING_FK_TABLES)
 
     for table, _ in _EXISTING_FK_TABLES:
-        op.create_foreign_key(None, table, "service", ["service_id"], ["id"])
+        op.create_foreign_key(None, table, "service", ["service_id"], ["id"], if_not_exists=True)
