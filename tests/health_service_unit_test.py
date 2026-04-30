@@ -96,10 +96,10 @@ async def test_unhealthy_operational_service_becomes_degraded():
     service = make_service(ServiceStatus.operational)
 
     with (
-        patch.object(health_service, "datetime", FrozenDateTime),
+        patch.object(health_service, "_recent_consecutive_failures", new=AsyncMock(return_value=health_service.INCIDENT_FAILURE_THRESHOLD - 1)),
         patch.object(health_service, "_create_incident", new=AsyncMock()),
     ):
-        await _update_service_status(session, service, make_result(False))
+        await _update_service_status(session, service, make_result(False), FrozenDateTime.current)
 
     assert service.status == ServiceStatus.degraded
     assert service.degraded_since == FrozenDateTime.current
@@ -119,7 +119,7 @@ async def test_unhealthy_degraded_service_escalates_to_partial_outage_after_30_m
         patch.object(health_service, "_unresolved_auto_incident_for_service", new=AsyncMock(return_value=None)),
         patch.object(health_service, "_create_incident", new=AsyncMock()),
     ):
-        await _update_service_status(session, service, make_result(False))
+        await _update_service_status(session, service, make_result(False), FrozenDateTime.current)
 
     assert service.status == ServiceStatus.partial_outage
     assert service.degraded_since == FrozenDateTime.current - timedelta(minutes=31)
@@ -135,7 +135,7 @@ async def test_unhealthy_degraded_service_does_not_escalate_before_30_minutes():
     )
 
     with patch.object(health_service, "datetime", FrozenDateTime):
-        await _update_service_status(session, service, make_result(False))
+        await _update_service_status(session, service, make_result(False), FrozenDateTime.current)
 
     assert service.status == ServiceStatus.degraded
     session.add.assert_not_called()
@@ -154,7 +154,7 @@ async def test_unhealthy_partial_outage_escalates_to_major_outage_after_2_hours(
         patch.object(health_service, "_unresolved_auto_incident_for_service", new=AsyncMock(return_value=None)),
         patch.object(health_service, "_create_incident", new=AsyncMock()),
     ):
-        await _update_service_status(session, service, make_result(False))
+        await _update_service_status(session, service, make_result(False), FrozenDateTime.current)
 
     assert service.status == ServiceStatus.major_outage
     session.add.assert_called_once_with(service)
@@ -169,7 +169,7 @@ async def test_unhealthy_partial_outage_does_not_escalate_before_2_hours():
     )
 
     with patch.object(health_service, "datetime", FrozenDateTime):
-        await _update_service_status(session, service, make_result(False))
+        await _update_service_status(session, service, make_result(False), FrozenDateTime.current)
 
     assert service.status == ServiceStatus.partial_outage
     session.add.assert_not_called()
@@ -193,7 +193,7 @@ async def test_recovery_moves_incident_to_monitoring():
         patch.object(health_service, "datetime", FrozenDateTime),
         patch.object(health_service, "_unresolved_auto_incident_for_service", new=AsyncMock(return_value=incident)),
     ):
-        await _update_service_status(session, service, make_result(True))
+        await _update_service_status(session, service, make_result(True), FrozenDateTime.current)
 
     assert service.status == ServiceStatus.operational
     assert service.degraded_since is None
@@ -214,7 +214,7 @@ async def test_recovery_without_open_incident_only_updates_service():
         patch.object(health_service, "datetime", FrozenDateTime),
         patch.object(health_service, "_unresolved_auto_incident_for_service", new=AsyncMock(return_value=None)),
     ):
-        await _update_service_status(session, service, make_result(True))
+        await _update_service_status(session, service, make_result(True), FrozenDateTime.current)
 
     assert service.status == ServiceStatus.operational
     assert service.degraded_since is None
@@ -233,7 +233,7 @@ async def test_second_clean_check_resolves_monitoring_incident():
         patch.object(health_service, "_unresolved_auto_incident_for_service", new=AsyncMock(return_value=incident)),
         patch.object(health_service, "_resolve_incident", new=AsyncMock()) as mock_resolve,
     ):
-        await _update_service_status(session, service, make_result(True))
+        await _update_service_status(session, service, make_result(True), FrozenDateTime.current)
 
     mock_resolve.assert_awaited_once()
 
@@ -247,7 +247,7 @@ async def test_clean_check_on_already_operational_service_with_no_incident_is_no
         patch.object(health_service, "datetime", FrozenDateTime),
         patch.object(health_service, "_unresolved_auto_incident_for_service", new=AsyncMock(return_value=None)),
     ):
-        await _update_service_status(session, service, make_result(True))
+        await _update_service_status(session, service, make_result(True), FrozenDateTime.current)
 
     session.add.assert_not_called()
 
