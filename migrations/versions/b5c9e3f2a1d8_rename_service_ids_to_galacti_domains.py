@@ -54,6 +54,7 @@ def upgrade() -> None:
         sa.Column('error', sa.Text(), nullable=True),
         sa.ForeignKeyConstraint(['service_id'], ['service.id'], ),
         sa.PrimaryKeyConstraint('id'),
+        if_not_exists=True
     )
     op.create_index('ix_servicecheckhistory_service_id', 'servicecheckhistory', ['service_id'], unique=False)
     op.create_index('ix_servicecheckhistory_checked_at', 'servicecheckhistory', ['checked_at'], unique=False)
