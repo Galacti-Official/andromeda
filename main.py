@@ -22,11 +22,11 @@ INITIAL_GROUPS = [
 ]
 
 INITIAL_SERVICES = [
-    Service(id="website", group_id="core", name="Website", status=ServiceStatus.operational,
+    Service(id="website", group_id="core", name="galacti.org", status=ServiceStatus.operational,
             check_url="https://galacti.org/", healthy_codes=[200, 301, 302]),
-    Service(id="dashboard", group_id="core", name="Dashboard", status=ServiceStatus.operational,
+    Service(id="dashboard", group_id="core", name="dashboard.galacti.org", status=ServiceStatus.operational,
             check_url="https://dashboard.galacti.org/", healthy_codes=[200, 301, 302, 307]),
-    Service(id="api", group_id="core", name="API", status=ServiceStatus.operational,
+    Service(id="api", group_id="core", name="api.galacti.org", status=ServiceStatus.operational,
             check_url="https://api.galacti.org/", healthy_codes=[200]),
 ]
 
