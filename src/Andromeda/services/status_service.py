@@ -96,14 +96,14 @@ async def _fetch_status(session: AsyncSession) -> StatusResponse:
 
     active_incidents = (await session.exec(
         select(Incident).where(col(Incident.resolved_at).is_(None))
-        .order_by(col(Incident.started_at).desc())
+        .order_by(col(Incident.started_at).asc())
     )).all()
 
     recent_incidents = (await session.exec(
         select(Incident).where(
             col(Incident.resolved_at).isnot(None),
             col(Incident.resolved_at) >= recent_incident_cutoff
-        ).order_by(col(Incident.started_at).desc())
+        ).order_by(col(Incident.started_at).asc())
     )).all()
 
     _relevant_incident = (
