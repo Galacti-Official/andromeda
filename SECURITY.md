@@ -1,1 +1,3 @@
-When reporting a security related bug or possible exploit do not create a public issue, please contact [andromeda@galacti.org](mailto:andromeda@galacti.org?subject=Andromeda%security%issue) and cc: [security@galacti.org](mailto:security@galacti.org?subject=Andromeda%security%issue).
+When reporting a security-related bug or possible exploit, please do **not** create a public issue.
+
+Instead, contact [andromeda@galacti.org](mailto:andromeda@galacti.org) and cc: [security@galacti.org](mailto:security@galacti.org).
