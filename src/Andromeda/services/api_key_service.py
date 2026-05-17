@@ -21,15 +21,18 @@ valid_env_types = ["live", "test"]
 
 # Utils
 def gen_secret() -> str:
+def _gen_secret() -> str:
     raw = secrets.token_bytes(32)
     return base64.urlsafe_b64encode(raw).rstrip(b'=').decode()
 
 
 def gen_kid() -> str:
+def _gen_kid() -> str:
     return shortuuid.uuid()
 
 
 def format_key(prefix: str, env: str, kid: str, secret: str) -> str:
+def _format_key(prefix: str, env: str, kid: str, secret: str) -> str:
     if prefix not in valid_type_prefixes:
         raise ValueError(f"{prefix} is not a valid type prefix, use one of {valid_type_prefixes}")
     
@@ -43,6 +46,7 @@ def format_key(prefix: str, env: str, kid: str, secret: str) -> str:
         raise ValueError(f"secret must be 43 characters, got {len(secret)}")
     
     return f"{prefix}.{env}.{kid}.{secret}"
+    return f"{prefix}_{env}_{kid}_{secret}"
  
 
 async def create_api_key(request: CreateKeyRequest, user: JWTPayload, session: AsyncSession) -> CreatedKeyResponse | None:
@@ -68,6 +72,9 @@ async def create_api_key(request: CreateKeyRequest, user: JWTPayload, session: A
         key_secret = gen_secret()
 
         full_key = format_key(prefix=request.type, env=request.env, kid=key_id, secret=key_secret)
+        key_id = _gen_kid()
+        key_secret = _gen_secret()
+        full_key = _format_key(prefix=request.type, env=request.env, kid=key_id, secret=key_secret)
 
         key = UserKey(user_id=client_user.id, name=request.name, kid=key_id, secret_hash=hash_secret(key_secret), scopes=request.scopes)
         session.add(key)

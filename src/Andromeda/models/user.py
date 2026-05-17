@@ -17,7 +17,7 @@ class User(SQLModel, table=True):
     
     is_active: bool = Field(default=True)
 
-    keys: list["UserKey"] = Relationship(back_populates="user")
+    keys: list["UserKey"] = Relationship(back_populates="user", cascade_delete=True)
 
     avatar: str = Field(default="https://cdn.galacti.org/avatars/default.png")
 
@@ -34,7 +34,7 @@ class User(SQLModel, table=True):
 
 class UserKey(SQLModel, table=True):
     id: UUID = Field(default_factory=uuid4, primary_key=True)
-    user_id: UUID = Field(foreign_key="user.id", index=True)
+    user_id: UUID = Field(foreign_key="user.id", ondelete="CASCADE", index=True)
 
     name: str | None = Field(default=None, index=True, max_length=128)
     kid: str = Field(index=True, unique=True, max_length=22)
@@ -42,6 +42,11 @@ class UserKey(SQLModel, table=True):
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
         sa_column=Column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+    )
+
+    last_used: datetime | None = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True)
     )
     
     secret_hash: str
