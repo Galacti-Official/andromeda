@@ -46,7 +46,7 @@ def set_session_cookie(response, sub: str, scopes: list[str]):
 
 
 async def auth_user_key(key: str, session: AsyncSession) -> str:
-    key_components = key.split(".")
+    key_components = key.split("_")
 
     if len(key_components) != 4 or key_components[0] != "sk" or key_components[1] != "live":
         raise HTTPException(status_code=401, detail="Invalid API key")

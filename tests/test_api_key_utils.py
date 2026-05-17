@@ -1,11 +1,11 @@
 import pytest
 
-from Andromeda.services.api_key_service import gen_kid, gen_secret, format_key
+from Andromeda.services.api_key_service import _gen_kid, _gen_secret, _format_key
 
 class TestAPIKeyUtils:
     def test_gen_kid(self):
-        kid1 = gen_kid()
-        kid2 = gen_kid()
+        kid1 = _gen_kid()
+        kid2 = _gen_kid()
         assert isinstance(kid1, str)
         assert isinstance(kid2, str)
         assert kid1 != kid2  # Should be unique
@@ -13,8 +13,8 @@ class TestAPIKeyUtils:
         assert len(kid2) == 22
 
     def test_gen_secret(self):
-        secret1 = gen_secret()
-        secret2 = gen_secret()
+        secret1 = _gen_secret()
+        secret2 = _gen_secret()
         assert isinstance(secret1, str)
         assert isinstance(secret2, str)
         assert secret1 != secret2  # Should be unique
@@ -24,11 +24,11 @@ class TestAPIKeyUtils:
     def test_format_key(self):
         prefix = "sk"
         env = "test"
-        kid = gen_kid()
-        secret = gen_secret()
-        formatted = format_key(prefix=prefix, env=env, kid=kid, secret=secret)
-        assert formatted == f"{prefix}.{env}.{kid}.{secret}"
-        parts = formatted.split(".")
+        kid = _gen_kid()
+        secret = _gen_secret()
+        formatted = _format_key(prefix=prefix, env=env, kid=kid, secret=secret)
+        assert formatted == f"{prefix}_{env}_{kid}_{secret}"
+        parts = formatted.split("_")
         assert parts[0] == "sk"
         assert parts[1] == "test"
         assert parts[2] == kid
