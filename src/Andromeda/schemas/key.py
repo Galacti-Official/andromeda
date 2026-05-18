@@ -21,6 +21,14 @@ class DeletedKeyResponse(BaseModel):
     message: str
 
 
+class ActivatedKeyResponse(BaseModel):
+    message: str
+
+
+class DeactivatedKeyResponse(BaseModel):
+    message: str
+
+
 class KeyPublic(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     name: str

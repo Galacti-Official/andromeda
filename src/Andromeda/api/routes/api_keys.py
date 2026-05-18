@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, Depends
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from Andromeda.auth.dependancies import get_current_user
@@ -6,9 +6,13 @@ from Andromeda.auth.dependancies import get_current_user
 from Andromeda.api.database.database import get_session
 
 from Andromeda.schemas.jwt import JWTPayload
-from Andromeda.schemas.key import CreateKeyRequest, CreatedKeyResponse, DeletedKeyResponse, KeyListResponse
 
-from Andromeda.services.api_key_service import create_api_key, delete_api_key, list_api_keys
+from Andromeda.schemas.key import (
+    CreateKeyRequest, CreatedKeyResponse, DeletedKeyResponse, ActivatedKeyResponse, DeactivatedKeyResponse,
+    KeyListResponse
+)
+
+from Andromeda.services.api_key_service import create_api_key, delete_api_key, activate_api_key, deactivate_api_key, list_api_keys
 
 
 router = APIRouter(prefix="/api-keys", tags=["api_keys"])
@@ -47,3 +51,21 @@ async def delete_api_key_request(
     session: AsyncSession = Depends(get_session)
 ) -> DeletedKeyResponse:
     return await delete_api_key(kid, user, session)
+
+
+@router.post("/{kid}/activate", response_model=ActivatedKeyResponse)
+async def activate_api_key_request(
+    kid: str,
+    user: JWTPayload = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session)
+) -> ActivatedKeyResponse:
+    return await activate_api_key(kid, user, session)
+
+
+@router.post("/{kid}/deactivate", response_model=DeactivatedKeyResponse)
+async def deactivate_api_key_request(
+    kid: str,
+    user: JWTPayload = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session)
+) -> DeactivatedKeyResponse:
+    return await deactivate_api_key(kid, user, session)
