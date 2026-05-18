@@ -99,11 +99,5 @@ def verify_jwt(token: str) -> JWTPayload:
             algorithms=["RS256"]
         )
         return JWTPayload(**decoded)
-    except jwt.exceptions.ExpiredSignatureError:
-        raise HTTPException(401, "Token expired")
-    except jwt.exceptions.InvalidAudienceError:
-        raise HTTPException(401, "Invalid audience")
-    except jwt.exceptions.InvalidIssuerError:
-        raise HTTPException(401, "Invalid issuer")
     except jwt.exceptions.PyJWTError:
         raise HTTPException(401, "Invalid token")
