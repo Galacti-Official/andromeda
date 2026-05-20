@@ -5,6 +5,8 @@ from datetime import datetime, timezone
 
 
 class User(SQLModel, table=True):
+    __tablename__ = "users" # type: ignore
+
     id: UUID = Field(default_factory=uuid4, primary_key=True)
 
     name: str = Field(index=True, max_length=64)
@@ -33,10 +35,12 @@ class User(SQLModel, table=True):
 
 
 class UserKey(SQLModel, table=True):
-    id: UUID = Field(default_factory=uuid4, primary_key=True)
-    user_id: UUID = Field(foreign_key="user.id", ondelete="CASCADE", index=True)
+    __tablename__ = "user_keys" # type: ignore
 
-    name: str | None = Field(default=None, index=True, max_length=128)
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    user_id: UUID = Field(foreign_key="users.id", ondelete="CASCADE", index=True)
+
+    name: str = Field(index=True, max_length=128)
     kid: str = Field(index=True, unique=True, max_length=22)
 
     created_at: datetime = Field(
