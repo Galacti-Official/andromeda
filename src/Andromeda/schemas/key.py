@@ -13,7 +13,7 @@ class CreatedKeyResponse(BaseModel):
     name: str
     type: str
     env: str
-    scopes: list[str]
+    scopes: list[str] | None
     key: str
 
 
@@ -29,8 +29,14 @@ class DeactivatedKeyResponse(BaseModel):
     message: str
 
 
+class EditKeyRequest(BaseModel):
+    name: str | None
+    scopes: list[str] | None
+
+
 class KeyPublic(BaseModel):
     model_config = ConfigDict(from_attributes=True)
+
     name: str
     kid: str
     scopes: list[str]
@@ -38,26 +44,18 @@ class KeyPublic(BaseModel):
     created_at: datetime
     is_active: bool
 
-
-class KeyCallDay(BaseModel):
-    date: datetime
-    calls: int
-
-
-class KeyUsage(BaseModel):
-    error_rate: int
-    daily_usage: list[KeyCallDay]
-    
 
 class KeySpecific(BaseModel):
     model_config = ConfigDict(from_attributes=True)
+
     name: str
     kid: str
-    scopes: list[str]
-    last_used: datetime | None
+    scopes: list[str] | None
     created_at: datetime
     is_active: bool
-    usage: KeyUsage
+    last_used: datetime | None
+    calls_today: int = 0
+    calls_this_hour: int = 0
     
 
 class KeyListResponse(BaseModel):

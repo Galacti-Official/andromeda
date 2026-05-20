@@ -2,16 +2,25 @@ import secrets
 import base64
 import shortuuid
 
+from datetime import datetime, timezone
+from uuid import UUID
+
 from fastapi import HTTPException
 from sqlmodel import select, col
-from sqlalchemy.exc import IntegrityError
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from Andromeda.auth.hashing import hash_secret
 
-from Andromeda.models.user import User, UserKey
+from Andromeda.api.database.redis import redis_client
 
-from Andromeda.schemas.key import CreateKeyRequest, CreatedKeyResponse, DeletedKeyResponse, KeyPublic, KeyListResponse, KeySpecific
+from Andromeda.models.user import User, UserKey, UserKeyUsage
+
+from Andromeda.schemas.user import UserPublic
+
+from Andromeda.schemas.key import (
+    CreateKeyRequest, CreatedKeyResponse, DeletedKeyResponse, ActivatedKeyResponse, DeactivatedKeyResponse,
+    KeyPublic, KeyListResponse, KeySpecific, EditKeyRequest
+)
 from Andromeda.schemas.jwt import JWTPayload
 
 
@@ -44,73 +53,93 @@ def _format_key(prefix: str, env: str, kid: str, secret: str) -> str:
         raise ValueError(f"secret must be 43 characters, got {len(secret)}")
     
     return f"{prefix}_{env}_{kid}_{secret}"
+
+
+def get_user_id(user: JWTPayload | UserPublic) -> UUID | str:
+    if isinstance(user, UserPublic):
+        return user.id
+    
+    sub_components = user.sub.split(":")
+    if len(sub_components) != 2:
+        raise HTTPException(403, "Forbidden")
+    return str(sub_components[1])
+
+
+async def increment_usage(kid: str):
+    try:
+        now = datetime.now(timezone.utc)
+        hour_key = now.strftime("%Y%m%d%H")
+        await redis_client.incr(f"usage:{kid}:calls:today")
+        await redis_client.incr(f"usage:{kid}:calls:{hour_key}")
+        await redis_client.set(f"usage:{kid}:last_used", now.isoformat())
+    except:
+        pass
+
+
+async def flush_daily_usage(session: AsyncSession):
+    today = datetime.now(timezone.utc)
+    
+    keys = await redis_client.keys("usage:*:calls:today")
+    
+    for key in keys:
+        kid = key.split(":")[1]
+        calls = int(await redis_client.get(key) or 0)
+        
+        if calls == 0:
+            continue
+        
+        usage = UserKeyUsage(kid=kid, calls=calls, date=today)
+        session.add(usage)
+    
+    await session.commit()
+    
+    for key in keys:
+        await redis_client.delete(key)
  
 
-async def create_api_key(request: CreateKeyRequest, user: JWTPayload, session: AsyncSession) -> CreatedKeyResponse:
-    sub_components = user.sub.split(":")
-
-    if len(sub_components) != 2 or sub_components[0] not in valid_user_types:
-        raise HTTPException(status_code=403, detail="Invalid user type")
-    
-    if sub_components[0] == "client":
-
-        if not all(scope in (user.scopes or []) for scope in request.scopes):
-            raise HTTPException(status_code=403, detail="Missing scopes")
-
-        result = await session.exec(select(User).join(UserKey).where(UserKey.kid == sub_components[1]))
+async def create_api_key(request: CreateKeyRequest, user: UserPublic, session: AsyncSession) -> CreatedKeyResponse:
+    result = await session.exec(select(User).where(User.id == user.id))
             
-        client_user = result.one_or_none()
+    selected_user = result.one_or_none()
 
-        if client_user is None:
-            raise HTTPException(status_code=401, detail="Invalid user")
+    if selected_user is None:
+        raise HTTPException(status_code=401, detail="Invalid user")
 
-        key_id = _gen_kid()
-        key_secret = _gen_secret()
-        full_key = _format_key(prefix=request.type, env=request.env, kid=key_id, secret=key_secret)
+    key_id = _gen_kid()
+    key_secret = _gen_secret()
+    full_key = _format_key(prefix=request.type, env=request.env, kid=key_id, secret=key_secret)
 
-        key = UserKey(user_id=client_user.id, name=request.name, kid=key_id, secret_hash=hash_secret(key_secret), scopes=request.scopes)
-        session.add(key)
+    key = UserKey(user_id=selected_user.id, name=request.name, kid=key_id, secret_hash=hash_secret(key_secret), scopes=request.scopes)
 
-        try:
-            await session.commit()
-            await session.refresh(key)
-            return CreatedKeyResponse(name=request.name, type=request.type, env=request.env, scopes=request.scopes, key=full_key)
-        except IntegrityError:
-            raise HTTPException(status_code=409, detail="An API key with this name already exists")
-        
-    elif sub_components[0] == "user":
-        result = await session.exec(select(User).where(User.id == sub_components[1]))
-            
-        selected_user = result.one_or_none()
+    session.add(key)
+    await session.commit()
+    await session.refresh(key)
 
-        if selected_user is None:
-            raise HTTPException(status_code=401, detail="Invalid user")
-
-        key_id = _gen_kid()
-        key_secret = _gen_secret()
-        full_key = _format_key(prefix=request.type, env=request.env, kid=key_id, secret=key_secret)
-
-        key = UserKey(user_id=selected_user.id, name=request.name, kid=key_id, secret_hash=hash_secret(key_secret), scopes=request.scopes)
-        session.add(key)
-
-        try:
-            await session.commit()
-            await session.refresh(key)
-            return CreatedKeyResponse(name=request.name, type=request.type, env=request.env, scopes=request.scopes, key=full_key)
-        except IntegrityError:
-            raise HTTPException(status_code=409, detail="An API key with this name already exists")
-        
-    else:
-        raise HTTPException(status_code=403, detail="Invalid user type")
+    return CreatedKeyResponse(name=request.name, type=request.type, env=request.env, scopes=request.scopes, key=full_key)    
     
 
-async def delete_api_key(kid: str, user: JWTPayload, session: AsyncSession) -> DeletedKeyResponse:
-    sub_components = user.sub.split(":")
+async def regenerate_api_key(kid: str, user: UserPublic, session: AsyncSession) -> CreatedKeyResponse:
+    result = await session.exec(select(UserKey).where(UserKey.user_id == user.id, UserKey.kid == kid))
 
-    if len(sub_components) != 2 or sub_components[0] != "user":
-        raise HTTPException(status_code=403, detail="Invalid user type")
+    selected_key = result.one_or_none()
+
+    if selected_key is None:
+        raise HTTPException(status_code=404, detail="API key not found")
     
-    result = await session.exec(select(UserKey).where(UserKey.user_id == sub_components[1], UserKey.kid == kid))
+    key_secret = _gen_secret()
+    full_key = _format_key(prefix="sk", env="live", kid=selected_key.kid, secret=key_secret)
+
+    selected_key.secret_hash = hash_secret(key_secret)
+
+    session.add(selected_key)
+    await session.commit()
+    await session.refresh(selected_key)
+
+    return CreatedKeyResponse(name=selected_key.name, type="sk", env="live", scopes=selected_key.scopes, key=full_key)
+    
+    
+async def delete_api_key(kid: str, user: UserPublic, session: AsyncSession) -> DeletedKeyResponse:
+    result = await session.exec(select(UserKey).where(UserKey.user_id == user.id, UserKey.kid == kid))
 
     selected_key = result.one_or_none()
 
@@ -123,15 +152,10 @@ async def delete_api_key(kid: str, user: JWTPayload, session: AsyncSession) -> D
     return DeletedKeyResponse(message="API key successfully deleted")
 
 
-async def list_api_keys(user: JWTPayload, session: AsyncSession) -> KeyListResponse:
-    sub_components = user.sub.split(":")
-
-    if len(sub_components) != 2 or sub_components[0] != "user":
-        raise HTTPException(status_code=403, detail="Invalid user type")
-    
+async def list_api_keys(user: UserPublic, session: AsyncSession) -> KeyListResponse:
     results = await session.exec(
         select(UserKey)
-        .where(UserKey.user_id == sub_components[1])
+        .where(UserKey.user_id == user.id)
         .order_by(col(UserKey.created_at).asc())
     )
 
@@ -140,14 +164,83 @@ async def list_api_keys(user: JWTPayload, session: AsyncSession) -> KeyListRespo
     return KeyListResponse(keys=keys)
 
 
-async def get_api_key_info(kid: str, user: JWTPayload, session: AsyncSession) -> KeySpecific:
-    sub_components = user.sub.split(":")
+async def get_api_key_info(kid: str, user: UserPublic, session: AsyncSession) -> KeySpecific:
+    key_result = await session.exec(select(UserKey).where(UserKey.user_id == user.id, UserKey.kid == kid))
 
-    if len(sub_components) != 2 or sub_components[0] != "user":
-        raise HTTPException(status_code=403, detail="Invalid user type")
+    selected_key = key_result.one_or_none()
+
+    if selected_key is None:
+        raise HTTPException(status_code=404, detail="API key not found")
     
-    result = await session.exec(select(UserKey).where(UserKey.user_id == sub_components[1], UserKey.kid == kid))
+    now = datetime.now(timezone.utc)
+    hour_key = now.strftime("%Y%m%d%H")
+    
+    calls_today = await redis_client.get(f"usage:{kid}:calls:today") or 0
+    calls_this_hour = await redis_client.get(f"usage:{kid}:calls:{hour_key}") or 0
+    last_used = await redis_client.get(f"usage:{kid}:last_used")
+
+    return KeySpecific(
+        name=selected_key.name, kid=selected_key.kid, scopes=selected_key.scopes,
+        created_at=selected_key.created_at, is_active=selected_key.is_active, last_used=last_used,
+        calls_today=calls_today, calls_this_hour=calls_this_hour
+    )
+
+
+async def activate_api_key(kid: str, user: UserPublic, session: AsyncSession) -> ActivatedKeyResponse:
+    result = await session.exec(select(UserKey).where(UserKey.user_id == user.id, UserKey.kid == kid))
 
     selected_key = result.one_or_none()
 
-    return KeySpecific.model_validate(selected_key)
+    if selected_key is None:
+        raise HTTPException(status_code=404, detail="API key not found")
+    
+    if selected_key.is_active:
+        raise HTTPException(status_code=409, detail="API key already activated")
+    
+    selected_key.is_active = True
+
+    session.add(selected_key)
+    await session.commit()
+
+    return ActivatedKeyResponse(message="API key successfully activated")
+
+
+async def deactivate_api_key(kid: str, user: UserPublic, session: AsyncSession) -> DeactivatedKeyResponse:
+    result = await session.exec(select(UserKey).where(UserKey.user_id == user.id, UserKey.kid == kid))
+
+    selected_key = result.one_or_none()
+
+    if selected_key is None:
+        raise HTTPException(status_code=404, detail="API key not found")
+    
+    if not selected_key.is_active:
+        raise HTTPException(status_code=409, detail="API key already deactivated")
+        
+    selected_key.is_active = False
+
+    session.add(selected_key)
+    await session.commit()
+
+    return DeactivatedKeyResponse(message="API key successfully deactivated")
+
+
+async def edit_api_key(kid: str, user: UserPublic, request: EditKeyRequest, session: AsyncSession) -> KeySpecific:
+    result = await session.exec(select(UserKey).where(UserKey.user_id == user.id, UserKey.kid == kid))
+
+    selected_key = result.one_or_none()
+
+    if selected_key is None:
+        raise HTTPException(status_code=404, detail="API key not found")
+
+    if request.scopes:
+        selected_key.scopes = request.scopes
+
+    if request.name:
+        selected_key.name = request.name
+
+    session.add(selected_key)
+    await session.commit()
+
+    return await get_api_key_info(kid, user, session)
+
+

@@ -59,3 +59,18 @@ class UserKey(SQLModel, table=True):
     scopes: list[str] | None = Field(default=None, sa_column=Column(JSON, nullable=True))
 
     user: Optional["User"] = Relationship(back_populates="keys")
+
+
+class UserKeyUsage(SQLModel, table=True):
+    __tablename__ = "user_key_usage" # type: ignore
+
+    id: UUID | None = Field(default_factory=uuid4, primary_key=True)
+    kid: str = Field(foreign_key="user_keys.kid", index=True)
+    
+    calls: int = Field(default=0)
+    errors: int = Field(default=0)
+    
+    date: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_column=Column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+    )
