@@ -35,3 +35,8 @@ class UserLoginResponse(BaseModel):
     success: bool
     message: str
     user: UserPublic
+
+
+class UserLogoutResponse(BaseModel):
+    success: bool
+    message: str

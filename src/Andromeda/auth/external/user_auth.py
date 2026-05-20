@@ -1,9 +1,10 @@
+import jwt, secrets
 from datetime import datetime, timedelta, timezone
+from uuid import UUID
 
-from fastapi import HTTPException
+from fastapi import HTTPException, Request, Response
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession as AsyncSession
-import jwt
 
 from Andromeda.auth.hashing import verify_secret, verify_password
 from Andromeda.models.user import User, UserKey
@@ -13,6 +14,64 @@ from Andromeda.config import settings
 
 
 COOKIE_NAME = "session"
+
+
+async def set_session_cookie(response: Response, user: UserPublic, redis_client):
+    session_id = secrets.token_urlsafe(64)
+    
+    await redis_client.setex(
+        f"session:{session_id}",
+        86400,
+        str(user.id)
+    )
+
+    await redis_client.sadd(f"user_sessions:{user.id}", session_id)
+    await redis_client.expire(f"user_sessions:{user.id}", 86400)
+
+    response.set_cookie(
+        key=COOKIE_NAME,
+        value=session_id,
+        httponly=True,
+        secure=not settings.debug,
+        samesite="strict",
+        max_age=86400,
+    )
+
+
+async def revoke_session(request: Request, response: Response, redis_client):
+    session_id = request.cookies.get(COOKIE_NAME)
+    if session_id:
+        user_id = await redis_client.get(f"session:{session_id}")
+        if user_id:
+            await redis_client.srem(f"user_sessions:{user_id}", session_id)
+        await redis_client.delete(f"session:{session_id}")
+    response.delete_cookie(COOKIE_NAME)
+
+
+async def revoke_all_sessions(user_id: UUID, redis_client):
+    session_ids = await redis_client.smembers(f"user_sessions:{user_id}")
+    for session_id in session_ids:
+        await redis_client.delete(f"session:{session_id}")
+    await redis_client.delete(f"user_sessions:{user_id}")
+
+
+async def auth_user_login(request: UserLoginRequest, session: AsyncSession) -> UserPublic:
+    result = await session.exec(select(User).where(User.email == request.email))
+    user = result.one_or_none()
+
+    password_ok = verify_password(
+        user.password_hash if user else settings.dummy_password_hash,
+        request.password
+    )
+
+    if user is None or not user.is_active or not password_ok:
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+        
+    user.last_login = datetime.now(timezone.utc)
+    session.add(user)
+    await session.commit()
+
+    return UserPublic.model_validate(user)
 
 
 def issue_token(sub_type: str, sub: str, scopes: list[str] | None = None) -> str:
@@ -29,19 +88,6 @@ def issue_token(sub_type: str, sub: str, scopes: list[str] | None = None) -> str
         },
         key = settings.jwt_private_key,
         algorithm = "RS256"
-    )
-
-
-def set_session_cookie(response, sub: str, scopes: list[str]):
-    token = issue_token(sub_type="user", sub=sub, scopes=scopes)
-
-    response.set_cookie(
-        key=COOKIE_NAME,
-        value=token,
-        httponly=True,
-        secure=not settings.debug,
-        samesite="strict",
-        max_age=3600,
     )
 
 
@@ -62,25 +108,6 @@ async def auth_user_key(key: str, session: AsyncSession) -> str:
         
     return issue_token(sub_type="client", sub=user_key.kid, scopes=user_key.scopes)
 
-
-async def auth_user_login(request: UserLoginRequest, session: AsyncSession) -> UserPublic:
-    result = await session.exec(select(User).where(User.email == request.email))
-    user = result.one_or_none()
-
-    password_ok = verify_password(
-        user.password_hash if user else settings.dummy_password_hash,
-        request.password
-    )
-
-    if user is None or not user.is_active or not password_ok:
-        raise HTTPException(status_code=401, detail="Invalid email or password")
-        
-    user.last_login = datetime.now(timezone.utc)
-    session.add(user)
-    await session.commit()
-
-    return UserPublic.model_validate(user)
-        
 
 def verify_jwt(token: str) -> JWTPayload:
     try:
