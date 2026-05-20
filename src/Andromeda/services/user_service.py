@@ -41,25 +41,15 @@ async def create_user(request: UserCreate, session: AsyncSession) -> UserPublic:
         raise HTTPException(status_code=409, detail="A user with this username or email already exists")
     
 
-async def delete_user(user: JWTPayload, session: AsyncSession) -> None:
-    sub_components = user.sub.split(":")
-
-    if len(sub_components) != 2 or sub_components[0] != "user":
-        raise HTTPException(status_code=403, detail="Invalid user type")
-    
-    result = await session.exec(select(User).where(User.id == sub_components[1]))
+async def delete_user(user: UserPublic, session: AsyncSession) -> None:
+    result = await session.exec(select(User).where(User.id == user.id))
     selected_user = result.one_or_none()
 
     await session.delete(selected_user)
 
 
-async def get_user_data(user: JWTPayload, session: AsyncSession) -> UserPublic:
-    sub_components = user.sub.split(":")
-
-    if len(sub_components) != 2 or sub_components[0] != "user":
-        raise HTTPException(status_code=403, detail="Invalid user type")
-    
-    result = await session.exec(select(User).where(User.id == sub_components[1]))
+async def get_user_data(user: UserPublic, session: AsyncSession) -> UserPublic:
+    result = await session.exec(select(User).where(User.id == user.id))
     user_data = result.one_or_none()
 
     return UserPublic.model_validate(user_data)
