@@ -6,6 +6,7 @@ from prometheus_fastapi_instrumentator import Instrumentator
 
 from Andromeda.api.database.init_db import init_db
 from Andromeda.api.database.database import engine
+from Andromeda.api.database.redis import redis_client
 
 from Andromeda.api.routes import auth, api_keys, status
 
@@ -58,10 +59,12 @@ def parse_trusted_proxies(raw: str) -> set[str]:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
+    await redis_client.ping() # type: ignore
     await seed_services()
     start_scheduler()
     yield
     stop_scheduler()
+    await redis_client.aclose()
 
 
 app = FastAPI(
