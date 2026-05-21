@@ -6,6 +6,7 @@ from fastapi import HTTPException, Request, Response
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession as AsyncSession
 
+from Andromeda.api.errors import AndromedaError
 from Andromeda.auth.hashing import verify_secret, verify_password
 from Andromeda.models.user import User, UserKey
 from Andromeda.schemas.jwt import JWTPayload
@@ -65,7 +66,7 @@ async def auth_user_login(request: UserLoginRequest, session: AsyncSession) -> U
     )
 
     if user is None or not user.is_active or not password_ok:
-        raise HTTPException(status_code=401, detail="Invalid email or password")
+        raise AndromedaError(401, "unauthorized", "Invalid email or password")
         
     user.last_login = datetime.now(timezone.utc)
     session.add(user)
@@ -95,16 +96,16 @@ async def auth_user_key(key: str, session: AsyncSession) -> str:
     key_components = key.split("_")
 
     if len(key_components) != 4 or key_components[0] != "sk" or key_components[1] != "live":
-        raise HTTPException(status_code=401, detail="Invalid API key")
+        raise AndromedaError(401, "unauthorized", "Invalid API key")
     
     result = await session.exec(select(UserKey).where(UserKey.kid == key_components[2]))
     user_key = result.one_or_none()
 
     if user_key is None or not user_key.is_active:
-        raise HTTPException(status_code=401, detail="Invalid API key")
+        raise AndromedaError(401, "unauthorized", "Invalid API key")
 
     if not verify_secret(user_key.secret_hash, key_components[3]):
-        raise HTTPException(status_code=401, detail="Invalid API key")
+        raise AndromedaError(401, "unauthorized", "Invalid API key")
         
     return issue_token(sub_type="client", sub=user_key.kid, scopes=user_key.scopes)
 
@@ -127,4 +128,4 @@ def verify_jwt(token: str) -> JWTPayload:
         )
         return JWTPayload(**decoded)
     except jwt.exceptions.PyJWTError:
-        raise HTTPException(401, "Invalid token")
+        raise AndromedaError(401, "unauthorized", "Invalid token")

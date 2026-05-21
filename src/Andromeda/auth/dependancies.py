@@ -7,6 +7,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select
 
 from Andromeda.auth.external.user_auth import verify_jwt
+from Andromeda.api.errors import AndromedaError
 from Andromeda.api.database.redis import redis_client
 from Andromeda.api.database.database import get_session
 from Andromeda.models.user import User
@@ -28,18 +29,18 @@ async def get_session_user(
     session_id = request.cookies.get(COOKIE_NAME)
     
     if not session_id:
-        raise HTTPException(401, "Not authenticated")
+        raise AndromedaError(401, "unauthorized", "Not authenticated")
     
     user_id = await redis_client.get(f"session:{session_id}")
     
     if not user_id:
-        raise HTTPException(401, "Not authenticated")
+        raise AndromedaError(401, "unauthorized", "Not authenticated")
     
     result = await session.exec(select(User).where(User.id == UUID(user_id)))
     user = result.one_or_none()
     
     if not user or not user.is_active:
-        raise HTTPException(401, "Not authenticated")
+        raise AndromedaError(401, "unauthorized", "Not authenticated")
     
     await redis_client.expire(f"session:{session_id}", 86400)
 
@@ -59,7 +60,7 @@ def get_current_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(security)
 ) -> JWTPayload:
     if not credentials:
-        raise HTTPException(401, "Not authenticated")
+        raise AndromedaError(401, "unauthorized", "Not authenticated")
     
     user = verify_jwt(credentials.credentials)
 
@@ -73,6 +74,6 @@ def get_current_user(
 def require_scope(scope: str):
     def check_scope(user: JWTPayload = Depends(get_current_user)) -> JWTPayload:
         if user.scopes is None or scope not in user.scopes:
-            raise HTTPException(403, "Insufficient permissions")
+            raise AndromedaError(403, "forbidden", "Insufficient permissions")
         return user
     return check_scope

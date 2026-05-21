@@ -5,13 +5,13 @@ import shortuuid
 from datetime import datetime, timezone
 from uuid import UUID
 
-from fastapi import HTTPException
 from sqlmodel import select, col
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from Andromeda.auth.hashing import hash_secret
 
 from Andromeda.api.database.redis import redis_client
+from Andromeda.api.errors import AndromedaError
 
 from Andromeda.models.user import User, UserKey, UserKeyUsage
 
@@ -61,7 +61,7 @@ def get_user_id(user: JWTPayload | UserPublic) -> UUID | str:
     
     sub_components = user.sub.split(":")
     if len(sub_components) != 2:
-        raise HTTPException(403, "Forbidden")
+        raise AndromedaError(400, "bad_request", "Invalid request")
     return str(sub_components[1])
 
 
@@ -103,7 +103,7 @@ async def create_api_key(request: CreateKeyRequest, user: UserPublic, session: A
     selected_user = result.one_or_none()
 
     if selected_user is None:
-        raise HTTPException(status_code=401, detail="Invalid user")
+        raise AndromedaError(404, "not_found", "User not found")
 
     key_id = _gen_kid()
     key_secret = _gen_secret()
@@ -124,7 +124,7 @@ async def regenerate_api_key(kid: str, user: UserPublic, session: AsyncSession) 
     selected_key = result.one_or_none()
 
     if selected_key is None:
-        raise HTTPException(status_code=404, detail="API key not found")
+        raise AndromedaError(404, "not_found", "API key not found")
     
     key_secret = _gen_secret()
     full_key = _format_key(prefix="sk", env="live", kid=selected_key.kid, secret=key_secret)
@@ -144,7 +144,7 @@ async def delete_api_key(kid: str, user: UserPublic, session: AsyncSession) -> D
     selected_key = result.one_or_none()
 
     if selected_key is None:
-        raise HTTPException(status_code=404, detail="API key not found")
+        raise AndromedaError(404, "not_found", "API key not found")
 
     await session.delete(selected_key)
     await session.commit()
@@ -170,7 +170,7 @@ async def get_api_key_info(kid: str, user: UserPublic, session: AsyncSession) ->
     selected_key = key_result.one_or_none()
 
     if selected_key is None:
-        raise HTTPException(status_code=404, detail="API key not found")
+        raise AndromedaError(404, "not_found", "API key not found")
     
     now = datetime.now(timezone.utc)
     hour_key = now.strftime("%Y%m%d%H")
@@ -192,10 +192,10 @@ async def activate_api_key(kid: str, user: UserPublic, session: AsyncSession) ->
     selected_key = result.one_or_none()
 
     if selected_key is None:
-        raise HTTPException(status_code=404, detail="API key not found")
+        raise AndromedaError(404, "not_found", "API key not found")
     
     if selected_key.is_active:
-        raise HTTPException(status_code=409, detail="API key already activated")
+        raise AndromedaError(409, "conflict", "API key already deactivated")
     
     selected_key.is_active = True
 
@@ -211,10 +211,10 @@ async def deactivate_api_key(kid: str, user: UserPublic, session: AsyncSession) 
     selected_key = result.one_or_none()
 
     if selected_key is None:
-        raise HTTPException(status_code=404, detail="API key not found")
+        raise AndromedaError(404, "not_found", "API key not found")
     
     if not selected_key.is_active:
-        raise HTTPException(status_code=409, detail="API key already deactivated")
+        raise AndromedaError(409, "conflict", "API key already deactivated")
         
     selected_key.is_active = False
 
@@ -230,7 +230,7 @@ async def edit_api_key(kid: str, user: UserPublic, request: EditKeyRequest, sess
     selected_key = result.one_or_none()
 
     if selected_key is None:
-        raise HTTPException(status_code=404, detail="API key not found")
+        raise AndromedaError(404, "not_found", "API key not found")
 
     if request.scopes:
         selected_key.scopes = request.scopes
@@ -242,5 +242,3 @@ async def edit_api_key(kid: str, user: UserPublic, request: EditKeyRequest, sess
     await session.commit()
 
     return await get_api_key_info(kid, user, session)
-
-

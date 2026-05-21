@@ -1,19 +1,16 @@
 from datetime import datetime, timezone
 
-from fastapi import HTTPException
 from sqlmodel import select
 from sqlalchemy.exc import IntegrityError
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-# Security
+from Andromeda.api.errors import AndromedaError
+
 from Andromeda.auth.hashing import hash_password
 
-# Models
 from Andromeda.models.user import User
 
-# Schemas 
 from Andromeda.schemas.user import UserCreate, UserPublic
-from Andromeda.schemas.jwt import JWTPayload
 
 
 async def create_user(request: UserCreate, session: AsyncSession) -> UserPublic:
@@ -38,7 +35,7 @@ async def create_user(request: UserCreate, session: AsyncSession) -> UserPublic:
             created_at=user.created_at
         )
     except IntegrityError:
-        raise HTTPException(status_code=409, detail="A user with this username or email already exists")
+        raise AndromedaError(409, "conflict", "A user with this username or email already exists")
     
 
 async def delete_user(user: UserPublic, session: AsyncSession) -> None:

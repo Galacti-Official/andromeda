@@ -1,6 +1,8 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from sqlmodel.ext.asyncio.session import AsyncSession
 from prometheus_fastapi_instrumentator import Instrumentator
 
@@ -9,6 +11,7 @@ from Andromeda.api.database.database import engine
 from Andromeda.api.database.redis import redis_client
 
 from Andromeda.api.routes import auth, api_keys, status
+from Andromeda.api.errors import AndromedaError, andromeda_error_handler, validation_error_handler, http_exception_handler
 
 from Andromeda.api.middleware import RateLimiterMiddleware
 from Andromeda.config import settings
@@ -44,7 +47,6 @@ async def seed_services() -> None:
             if not existing:
                 session.add(service)
             else:
-                # Always sync check config so URL/code changes take effect on redeploy.
                 existing.check_url = service.check_url
                 existing.healthy_codes = service.healthy_codes
                 session.add(existing)
@@ -76,6 +78,11 @@ app = FastAPI(
 
 
 Instrumentator().instrument(app).expose(app, endpoint="/metrics")
+
+
+app.add_exception_handler(AndromedaError, andromeda_error_handler)
+app.add_exception_handler(RequestValidationError, validation_error_handler)
+app.add_exception_handler(StarletteHTTPException, http_exception_handler)
 
 
 app.add_middleware(
