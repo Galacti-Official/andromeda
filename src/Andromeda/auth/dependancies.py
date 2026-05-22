@@ -1,7 +1,7 @@
-import asyncio
+import asyncio, json
 
 from uuid import UUID
-from fastapi import HTTPException, Request, Response, Depends
+from fastapi import Request, Response, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select
@@ -31,12 +31,18 @@ async def get_session_user(
     if not session_id:
         raise AndromedaError(401, "unauthorized", "Not authenticated")
     
-    user_id = await redis_client.get(f"session:{session_id}")
+    raw = await redis_client.get(f"session:{session_id}")
+    
+    if not raw:
+        raise AndromedaError(401, "unauthorized", "Not authenticated")
+    
+    data = json.loads(raw)
+    user_id = UUID(data["user_id"])
     
     if not user_id:
         raise AndromedaError(401, "unauthorized", "Not authenticated")
     
-    result = await session.exec(select(User).where(User.id == UUID(user_id)))
+    result = await session.exec(select(User).where(User.id == user_id))
     user = result.one_or_none()
     
     if not user or not user.is_active:

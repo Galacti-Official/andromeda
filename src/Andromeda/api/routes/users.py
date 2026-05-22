@@ -26,7 +26,10 @@ async def get_me(
 
 
 @router.patch("/me")
-async def edit_me():
+async def edit_me(
+    user: UserPublic = Depends(get_session_user),
+    session: AsyncSession = Depends(get_session)
+):
     pass
 
 

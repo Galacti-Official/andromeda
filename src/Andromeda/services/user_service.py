@@ -1,3 +1,5 @@
+import json
+import user_agents as ua
 from datetime import datetime, timezone
 
 from fastapi import Request
@@ -55,15 +57,30 @@ async def delete_user(user: UserPublic, session: AsyncSession, redis_client) -> 
 
 async def get_user_sessions(user: UserPublic, request: Request, redis_client) -> UserSessions:
     session_ids = await redis_client.smembers(f"user_sessions:{user.id}")
-    current_session_id = request.get(COOKIE_NAME)
+    current_session_id = request.cookies.get(COOKIE_NAME)
 
     sessions = []
 
     for session_id in session_ids:
-        session = UserSession(session_id=session_id, is_current_session=False)
-        if session_id == current_session_id:
-            session.is_current_session = True
-        sessions.append(session)
+        raw = await redis_client.get(f"session:{session_id}")
+
+        if raw:
+            data = json.loads(raw)
+
+            user_agent = ua.parse(data["user_agent"])
+
+            session = UserSession(
+                session_id=session_id,
+                current_session_id=str(current_session_id),
+                is_current_session=True if session_id == current_session_id else False,
+                created_at=data["created_at"],
+                last_used_at=data["last_used_at"],
+                browser=user_agent.browser.family,
+                os=user_agent.os.family,
+                device_type=user_agent.device.family
+            )
+
+            sessions.append(session)
 
     return UserSessions(sessions=sessions)
 

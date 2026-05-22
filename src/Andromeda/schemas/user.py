@@ -44,7 +44,13 @@ class UserLogoutResponse(BaseModel):
 
 class UserSession(BaseModel):
     session_id: str
+    current_session_id: str
     is_current_session: bool
+    created_at: datetime
+    last_used_at: datetime
+    browser: str
+    os: str
+    device_type: str
 
 
 class UserSessions(BaseModel):

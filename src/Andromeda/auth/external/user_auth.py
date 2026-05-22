@@ -1,4 +1,4 @@
-import jwt, secrets
+import json, jwt, secrets
 from datetime import datetime, timedelta, timezone
 
 from fastapi import Request, Response
@@ -16,13 +16,20 @@ from Andromeda.config import settings
 COOKIE_NAME = "session"
 
 
-async def set_session_cookie(response: Response, user: UserPublic, redis_client):
+async def set_session_cookie(request: Request, response: Response, user: UserPublic, redis_client):
     session_id = secrets.token_urlsafe(64)
     
+    session_data = json.dumps({
+        "user_id": str(user.id),
+        "user_agent": request.headers.get("user-agent"),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "last_used_at": datetime.now(timezone.utc).isoformat()
+    })
+
     await redis_client.setex(
         f"session:{session_id}",
         86400,
-        str(user.id)
+        session_data
     )
 
     await redis_client.sadd(f"user_sessions:{user.id}", session_id)
@@ -41,9 +48,10 @@ async def set_session_cookie(response: Response, user: UserPublic, redis_client)
 async def revoke_session(request: Request, response: Response, redis_client):
     session_id = request.cookies.get(COOKIE_NAME)
     if session_id:
-        user_id = await redis_client.get(f"session:{session_id}")
-        if user_id:
-            await redis_client.srem(f"user_sessions:{user_id}", session_id)
+        raw = await redis_client.get(f"session:{session_id}")
+        if raw:
+            data = json.loads(raw)
+            await redis_client.srem(f"user_sessions:{data['user_id']}", session_id)
         await redis_client.delete(f"session:{session_id}")
     response.delete_cookie(COOKIE_NAME)
 
