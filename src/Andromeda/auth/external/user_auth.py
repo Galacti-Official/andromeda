@@ -1,8 +1,7 @@
 import jwt, secrets
 from datetime import datetime, timedelta, timezone
-from uuid import UUID
 
-from fastapi import HTTPException, Request, Response
+from fastapi import Request, Response
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession as AsyncSession
 
@@ -49,11 +48,16 @@ async def revoke_session(request: Request, response: Response, redis_client):
     response.delete_cookie(COOKIE_NAME)
 
 
-async def revoke_all_sessions(user_id: UUID, redis_client):
-    session_ids = await redis_client.smembers(f"user_sessions:{user_id}")
+async def revoke_specific_session(session_id: str, user: UserPublic, redis_client):
+    await redis_client.srem(f"user_sessions:{user.id}", session_id)
+    await redis_client.delete(f"session:{session_id}")
+
+
+async def revoke_all_sessions(user: UserPublic, redis_client):
+    session_ids = await redis_client.smembers(f"user_sessions:{user.id}")
     for session_id in session_ids:
         await redis_client.delete(f"session:{session_id}")
-    await redis_client.delete(f"user_sessions:{user_id}")
+    await redis_client.delete(f"user_sessions:{user.id}")
 
 
 async def auth_user_login(request: UserLoginRequest, session: AsyncSession) -> UserPublic:

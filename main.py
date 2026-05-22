@@ -10,7 +10,7 @@ from Andromeda.api.database.init_db import init_db
 from Andromeda.api.database.database import engine
 from Andromeda.api.database.redis import redis_client
 
-from Andromeda.api.routes import auth, api_keys, status
+from Andromeda.api.routes import auth, api_keys, status, users
 from Andromeda.api.errors import AndromedaError, andromeda_error_handler, validation_error_handler, http_exception_handler
 
 from Andromeda.api.middleware import RateLimiterMiddleware
@@ -96,6 +96,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(api_keys.router)
 app.include_router(status.router)
+app.include_router(users.router)
 
 
 @app.get("/")

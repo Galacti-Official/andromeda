@@ -40,3 +40,12 @@ class UserLoginResponse(BaseModel):
 class UserLogoutResponse(BaseModel):
     success: bool
     message: str
+
+
+class UserSession(BaseModel):
+    session_id: str
+    is_current_session: bool
+
+
+class UserSessions(BaseModel):
+    sessions: list[UserSession]
