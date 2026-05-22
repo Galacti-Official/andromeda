@@ -71,7 +71,6 @@ async def get_user_sessions(user: UserPublic, request: Request, redis_client) ->
 
             session = UserSession(
                 session_id=session_id,
-                current_session_id=str(current_session_id),
                 is_current_session=True if session_id == current_session_id else False,
                 created_at=data["created_at"],
                 last_used_at=data["last_used_at"],
