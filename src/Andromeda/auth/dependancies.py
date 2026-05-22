@@ -1,6 +1,8 @@
 import asyncio, json
 
 from uuid import UUID
+from datetime import datetime, timezone
+
 from fastapi import Request, Response, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -47,8 +49,10 @@ async def get_session_user(
     
     if not user or not user.is_active:
         raise AndromedaError(401, "unauthorized", "Not authenticated")
-    
-    await redis_client.expire(f"session:{session_id}", 86400)
+
+    data["last_used_at"] = datetime.now(timezone.utc).isoformat()
+
+    await redis_client.setex(f"session:{session_id}", 86400, json.dumps(data))
 
     response.set_cookie(
         key=COOKIE_NAME,
