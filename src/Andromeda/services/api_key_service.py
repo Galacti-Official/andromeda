@@ -32,7 +32,7 @@ valid_env_types = ["live", "test"]
 # Utils
 def _gen_secret() -> str:
     raw = secrets.token_bytes(32)
-    return base64.urlsafe_b64encode(raw).rstrip(b'=').decode()
+    return base64.urlsafe_b64encode(raw).rstrip(b'=').decode().replace('_', '-')
 
 
 def _gen_kid() -> str:
