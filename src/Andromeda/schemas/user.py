@@ -42,6 +42,19 @@ class UserLogoutResponse(BaseModel):
     message: str
 
 
+class UserEditRequest(BaseModel):
+    name: str
+
+
+class UserChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
+class UserChangePasswordResponse(BaseModel):
+    message: str
+
+
 class UserSession(BaseModel):
     session_id: str
     is_current_session: bool

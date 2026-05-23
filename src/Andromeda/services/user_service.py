@@ -9,12 +9,12 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from Andromeda.api.errors import AndromedaError
 
-from Andromeda.auth.hashing import hash_password
+from Andromeda.auth.hashing import hash_password, verify_password
 from Andromeda.auth.external.user_auth import revoke_all_sessions
 
 from Andromeda.models.user import User
 
-from Andromeda.schemas.user import UserCreate, UserPublic, UserSession, UserSessions
+from Andromeda.schemas.user import UserCreate, UserPublic, UserEditRequest, UserChangePasswordRequest,  UserChangePasswordResponse, UserSession, UserSessions
 
 
 COOKIE_NAME = "session"
@@ -53,6 +53,41 @@ async def delete_user(user: UserPublic, session: AsyncSession, redis_client) -> 
 
     await session.delete(selected_user)
     await session.commit()
+
+
+async def edit_user(request: UserEditRequest, user: UserPublic, session: AsyncSession) -> UserPublic:
+    result = await session.exec(select(User).where(User.id == user.id))
+    selected_user = result.one_or_none()
+
+    if selected_user is None:
+        raise AndromedaError(404, "not_found", "Selected user not found")
+
+    if request.name:
+        selected_user.name = request.name
+
+    session.add(selected_user)
+    await session.commit()
+    await session.refresh(selected_user)
+
+    return UserPublic.model_validate(selected_user)
+
+
+async def change_user_password(request: UserChangePasswordRequest, user: UserPublic, session: AsyncSession) -> UserChangePasswordResponse:
+    result = await session.exec(select(User).where(User.id == user.id))
+    selected_user = result.one_or_none()
+
+    if selected_user is None:
+        raise AndromedaError(404, "not_found", "Selected user not found")
+    
+    if not verify_password(selected_user.password_hash, request.current_password):
+        raise AndromedaError(401, "unauthorized", "Invalid password")
+    
+    selected_user.password_hash = hash_password(request.new_password)
+
+    session.add(selected_user)
+    await session.commit()
+    
+    return UserChangePasswordResponse(message="Password changed successfully")
 
 
 async def get_user_sessions(user: UserPublic, request: Request, redis_client) -> UserSessions:
