@@ -72,7 +72,7 @@ async def increment_usage(kid: str):
         await redis_client.incr(f"usage:{kid}:calls:today")
         await redis_client.incr(f"usage:{kid}:calls:{hour_key}")
         await redis_client.set(f"usage:{kid}:last_used", now.isoformat())
-    except:
+    except Exception:
         pass
 
 
