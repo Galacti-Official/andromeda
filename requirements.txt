@@ -67,7 +67,7 @@ typing_extensions==4.15.0
 tzlocal==5.3.1
 ua-parser==1.0.2
 ua-parser-builtins==202605
-urllib3==2.6.3
+urllib3==2.7.0
 user-agents==2.2.0
 uvicorn==0.41.0
 uvloop==0.22.1
