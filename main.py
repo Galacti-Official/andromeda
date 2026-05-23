@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -101,4 +102,13 @@ app.include_router(users.router)
 
 @app.get("/")
 async def root_get():
-    return {"info":"Andromeda API is online.", "version": settings.version}
+    return JSONResponse(
+        status_code=200,
+        content={
+            "message" : "Andromeda API is online!",
+            "environment" : "production" if settings.production else "testing",
+            "version" : settings.version,
+            "version_family" : settings.version_family,
+            "build" : settings.build
+        }
+    )

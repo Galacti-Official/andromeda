@@ -21,11 +21,15 @@ jobs:
           host: ${{ secrets.DEPLOY_HOST }}
           username: deploy
           key: ${{ secrets.DEPLOY_KEY }}
+          envs: GITHUB_SHA
           script: |
             sudo /usr/local/bin/andromeda-deploy-fixperms
             git -C /opt/andromeda pull origin main
             sudo /opt/andromeda/venv/bin/pip install -r /opt/andromeda/requirements.txt
             sudo /opt/andromeda/venv/bin/pip install -e /opt/andromeda
             cd /opt/andromeda && sudo -E /opt/andromeda/venv/bin/alembic upgrade head
+
+            sudo sed -i "s/^APP_BUILD=.*/APP_BUILD=${GITHUB_SHA::7}/" /opt/andromeda/.env
+
             sudo systemctl restart andromeda
             sudo /usr/local/bin/andromeda-deploy-resetperms

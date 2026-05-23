@@ -12,8 +12,10 @@ class Settings(BaseSettings):
     user_jwt_iss: str
     user_jwt_aud: str
     production: bool
+    build: str
     debug: bool = False
-    version: str = "0.0.1"
+    version: str = "0.1.0-beta1"
+    version_family: str = "v0"
     dummy_password_hash: str = "$argon2id$v=19$m=131072,t=4,p=2$oyquekmTfion1k21h1TYEA$MWrdV1jMYPLZtZCl4/Df76VHbrYnInV4Etc89d/XWsY"
     rate_limit_requests: int = 100
     rate_limit_window_seconds: int = 60
