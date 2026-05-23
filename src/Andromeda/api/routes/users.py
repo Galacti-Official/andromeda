@@ -9,9 +9,7 @@ from Andromeda.api.database.database import get_session
 
 from Andromeda.schemas.user import UserPublic, UserEditRequest, UserChangePasswordRequest, UserChangePasswordResponse, UserSessions
 
-from Andromeda.services.user_service import (
-    get_user_data, delete_user, edit_user, change_user_password, get_user_sessions
-)
+from Andromeda.services.user_service import get_user_data, delete_user, edit_user, change_user_password, get_user_sessions
 
 router = APIRouter(prefix="/users", tags=["users"])
 
