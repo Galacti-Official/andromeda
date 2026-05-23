@@ -56,7 +56,13 @@ class RateLimiterMiddleware(BaseHTTPMiddleware):
                     headers["Retry-After"] = str(retry_after)
                     return JSONResponse(
                         status_code=429,
-                        content={"detail": "Rate limit exceeded. Please retry later."},
+                        content={
+                            "error": {
+                                "code": 429,
+                                "message": "Rate limit exceeded",
+                                "status": "too_many_requests"
+                            }
+                        },
                         headers=headers,
                     )
 

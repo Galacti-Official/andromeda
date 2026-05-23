@@ -4,9 +4,11 @@ from datetime import datetime, timezone
 
 
 class Notification(SQLModel, table=True):
+    __tablename__ = "notifications" # type: ignore
+
     id: UUID = Field(default_factory=uuid4, primary_key=True)
 
-    user_id: UUID = Field(foreign_key="user.id", index=True)
+    user_id: UUID = Field(foreign_key="users.id", index=True)
 
     type: str = Field(max_length=32, index=True)
     title: str = Field(max_length=64)

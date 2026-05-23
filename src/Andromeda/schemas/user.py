@@ -2,8 +2,6 @@ from uuid import UUID
 from datetime import datetime
 from pydantic import BaseModel, ConfigDict
 
-from Andromeda.models.user import User, UserKey
-
 
 class UserPublic(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -37,3 +35,35 @@ class UserLoginResponse(BaseModel):
     success: bool
     message: str
     user: UserPublic
+
+
+class UserLogoutResponse(BaseModel):
+    success: bool
+    message: str
+
+
+class UserEditRequest(BaseModel):
+    name: str
+
+
+class UserChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
+class UserChangePasswordResponse(BaseModel):
+    message: str
+
+
+class UserSession(BaseModel):
+    session_id: str
+    is_current_session: bool
+    created_at: datetime
+    last_used_at: datetime
+    browser: str
+    os: str
+    device_type: str
+
+
+class UserSessions(BaseModel):
+    sessions: list[UserSession]

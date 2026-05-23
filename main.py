@@ -1,13 +1,18 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from sqlmodel.ext.asyncio.session import AsyncSession
 from prometheus_fastapi_instrumentator import Instrumentator
 
 from Andromeda.api.database.init_db import init_db
 from Andromeda.api.database.database import engine
+from Andromeda.api.database.redis import redis_client
 
-from Andromeda.api.routes import auth, api_keys, status
+from Andromeda.api.routes import auth, api_keys, status, users
+from Andromeda.api.errors import AndromedaError, andromeda_error_handler, validation_error_handler, http_exception_handler
 
 from Andromeda.api.middleware import RateLimiterMiddleware
 from Andromeda.config import settings
@@ -43,7 +48,6 @@ async def seed_services() -> None:
             if not existing:
                 session.add(service)
             else:
-                # Always sync check config so URL/code changes take effect on redeploy.
                 existing.check_url = service.check_url
                 existing.healthy_codes = service.healthy_codes
                 session.add(existing)
@@ -58,10 +62,12 @@ def parse_trusted_proxies(raw: str) -> set[str]:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
+    await redis_client.ping() # type: ignore
     await seed_services()
     start_scheduler()
     yield
     stop_scheduler()
+    await redis_client.aclose()
 
 
 app = FastAPI(
@@ -75,6 +81,11 @@ app = FastAPI(
 Instrumentator().instrument(app).expose(app, endpoint="/metrics")
 
 
+app.add_exception_handler(AndromedaError, andromeda_error_handler)
+app.add_exception_handler(RequestValidationError, validation_error_handler)
+app.add_exception_handler(StarletteHTTPException, http_exception_handler)
+
+
 app.add_middleware(
     RateLimiterMiddleware,
     requests_limit=settings.rate_limit_requests,
@@ -86,8 +97,18 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(api_keys.router)
 app.include_router(status.router)
+app.include_router(users.router)
 
 
 @app.get("/")
 async def root_get():
-    return {"info":"Andromeda API is online.", "version": settings.version}
+    return JSONResponse(
+        status_code=200,
+        content={
+            "message" : "Andromeda API is online!",
+            "environment" : "production" if settings.production else "testing",
+            "version" : settings.version,
+            "version_family" : settings.version_family,
+            "build" : settings.build
+        }
+    )
