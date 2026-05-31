@@ -99,6 +99,11 @@ app.include_router(api_keys.router)
 app.include_router(status.router)
 app.include_router(users.router)
 
+app.include_router(auth.router, prefix="/v0")
+app.include_router(api_keys.router, prefix="/v0")
+app.include_router(status.router, prefix="/v0")
+app.include_router(users.router, prefix="/v0")
+
 
 @app.get("/")
 async def root_get():
