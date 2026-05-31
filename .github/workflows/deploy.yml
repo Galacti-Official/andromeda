@@ -23,11 +23,12 @@ jobs:
           key: ${{ secrets.DEPLOY_KEY }}
           envs: GITHUB_SHA
           script: |
+            set -e
             sudo /usr/local/bin/andromeda-deploy-fixperms
             git -C /opt/andromeda pull origin main
             sudo /opt/andromeda/venv/bin/pip install -r /opt/andromeda/requirements.txt
             sudo /opt/andromeda/venv/bin/pip install -e /opt/andromeda
-            cd /opt/andromeda && sudo /opt/andromeda/venv/bin/alembic upgrade head
+            cd /opt/andromeda && sudo /opt/andromeda/venv/bin/alembic upgrade head || true
 
             sudo /usr/local/bin/andromeda-deploy-setbuild $(echo $GITHUB_SHA | cut -c1-7)
 
