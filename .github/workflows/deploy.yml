@@ -27,9 +27,11 @@ jobs:
             git -C /opt/andromeda pull origin main
             sudo /opt/andromeda/venv/bin/pip install -r /opt/andromeda/requirements.txt
             sudo /opt/andromeda/venv/bin/pip install -e /opt/andromeda
+            echo "=== running migrate ==="
             sudo /usr/local/bin/andromeda-deploy-migrate
-
+            echo "=== running setbuild ==="
             sudo /usr/local/bin/andromeda-deploy-setbuild $(echo $GITHUB_SHA | cut -c1-7)
-
+            echo "=== restarting ==="
             sudo systemctl restart andromeda
             sudo /usr/local/bin/andromeda-deploy-resetperms
+            echo "=== done ==="
