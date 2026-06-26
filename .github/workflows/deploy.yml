@@ -11,9 +11,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Connect to Tailscale
-        uses: tailscale/github-action@v2
+        uses: tailscale/github-action@v4
         with:
-          authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+          ping: ${{ secrets.DEPLOY_HOST }}
 
       - name: Deploy to server
         uses: appleboy/ssh-action@v1
@@ -23,6 +26,7 @@ jobs:
           key: ${{ secrets.DEPLOY_KEY }}
           envs: GITHUB_SHA
           script: |
+            set -euo pipefail
             sudo /usr/local/bin/andromeda-deploy-fixperms
             git -C /opt/andromeda pull origin main
             sudo /opt/andromeda/venv/bin/pip install -r /opt/andromeda/requirements.txt
