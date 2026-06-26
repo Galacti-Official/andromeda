@@ -57,6 +57,10 @@ async def revoke_session(request: Request, response: Response, redis_client):
 
 
 async def revoke_specific_session(session_id: str, user: UserPublic, redis_client):
+    is_owner = await redis_client.sismember(f"user_sessions:{user.id}", session_id)
+    if not is_owner:
+        raise AndromedaError(404, "not_found", "Session not found")
+
     await redis_client.srem(f"user_sessions:{user.id}", session_id)
     await redis_client.delete(f"session:{session_id}")
 
