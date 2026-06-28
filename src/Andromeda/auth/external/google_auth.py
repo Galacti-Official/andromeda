@@ -1,4 +1,3 @@
-import secrets
 from datetime import datetime, timezone
 from urllib.parse import urlencode
 
@@ -7,10 +6,12 @@ from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from Andromeda.api.errors import AndromedaError
+from Andromeda.auth.external.oauth import generate_oauth_state, validate_oauth_state
 from Andromeda.models.user import User
 from Andromeda.schemas.user import UserPublic
 from Andromeda.config import settings
 
+__all__ = ["auth_user_google", "build_google_authorize_url", "generate_oauth_state", "validate_oauth_state"]
 
 _GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 _GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
@@ -27,18 +28,6 @@ def build_google_authorize_url(state: str) -> str:
         "access_type": "online",
     }
     return f"{_GOOGLE_AUTH_URL}?{urlencode(params)}"
-
-
-async def generate_oauth_state(redis_client) -> str:
-    state = secrets.token_urlsafe(32)
-    await redis_client.setex(f"oauth_state:{state}", 300, "1")
-    return state
-
-
-async def validate_oauth_state(state: str, redis_client) -> None:
-    deleted = await redis_client.delete(f"oauth_state:{state}")
-    if not deleted:
-        raise AndromedaError(400, "bad_request", "Invalid or expired OAuth state")
 
 
 async def _exchange_code_for_token(code: str) -> str:
@@ -100,8 +89,6 @@ async def auth_user_google(code: str, session: AsyncSession) -> UserPublic:
 
     if not user.is_active:
         raise AndromedaError(401, "unauthorized", "Account is disabled")
-    
-
 
     user.last_login = datetime.now(timezone.utc)
     session.add(user)
