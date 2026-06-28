@@ -40,7 +40,9 @@ async def set_session_cookie(request: Request, response: Response, user: UserPub
         value=session_id,
         httponly=True,
         secure=not settings.debug,
-        samesite="strict",
+        samesite="lax",
+        path="/",
+        domain=".galacti.org" if settings.production else None,
         max_age=86400,
     )
 
@@ -77,11 +79,11 @@ async def auth_user_login(request: UserLoginRequest, session: AsyncSession) -> U
     user = result.one_or_none()
 
     password_ok = verify_password(
-        user.password_hash if user else settings.dummy_password_hash,
+        user.password_hash if (user and user.password_hash) else settings.dummy_password_hash,
         request.password
     )
 
-    if user is None or not user.is_active or not password_ok:
+    if user is None or not user.is_active or not user.password_hash or not password_ok:
         raise AndromedaError(401, "unauthorized", "Invalid email or password")
         
     user.last_login = datetime.now(timezone.utc)

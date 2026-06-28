@@ -1,13 +1,16 @@
 from fastapi import APIRouter, Request, Response, Depends
+from fastapi.responses import RedirectResponse
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from Andromeda.auth.external.user_auth import auth_user_key, auth_user_login, set_session_cookie, revoke_session
+from Andromeda.auth.external.google_auth import auth_user_google, build_google_authorize_url, generate_oauth_state, validate_oauth_state
 
 from Andromeda.api.database.database import get_session
 from Andromeda.api.database.redis import redis_client
 
 from Andromeda.services.user_service import create_user
 
+from Andromeda.config import settings
 from Andromeda.schemas.jwt import JWTResponse, UserTokenRequest
 from Andromeda.schemas.user import UserLoginRequest, UserLoginResponse, UserLogoutResponse, UserCreateResponse, UserCreate
 
@@ -55,3 +58,23 @@ async def logout(
 ) -> UserLogoutResponse:
     await revoke_session(request, response, redis_client)
     return UserLogoutResponse(success=True, message="User logged out successfully")
+
+
+@router.get("/google/login")
+async def google_login() -> RedirectResponse:
+    state = await generate_oauth_state(redis_client)
+    return RedirectResponse(url=build_google_authorize_url(state))
+
+
+@router.get("/google/callback")
+async def google_callback(
+    request: Request,
+    code: str,
+    state: str,
+    session: AsyncSession = Depends(get_session)
+) -> RedirectResponse:
+    await validate_oauth_state(state, redis_client)
+    user = await auth_user_google(code, session)
+    redirect = RedirectResponse(url=settings.frontend_url)
+    await set_session_cookie(request, redirect, user, redis_client)
+    return redirect
