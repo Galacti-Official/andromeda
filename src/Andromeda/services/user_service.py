@@ -79,6 +79,9 @@ async def change_user_password(request: UserChangePasswordRequest, user: UserPub
     if selected_user is None:
         raise AndromedaError(404, "not_found", "Selected user not found")
     
+    if not selected_user.password_hash:
+        raise AndromedaError(400, "bad_request", "Password login is not set up for this account")
+
     if not verify_password(selected_user.password_hash, request.current_password):
         raise AndromedaError(401, "unauthorized", "Invalid password")
     

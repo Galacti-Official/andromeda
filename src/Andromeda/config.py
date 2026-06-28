@@ -20,5 +20,12 @@ class Settings(BaseSettings):
     rate_limit_requests: int = 100
     rate_limit_window_seconds: int = 60
     rate_limit_trusted_proxy_ips: str = ""
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    google_redirect_uri: str = ""
+    github_client_id: str = ""
+    github_client_secret: str = ""
+    github_redirect_uri: str = ""
+    frontend_url: str
 
 settings = Settings()  # type: ignore

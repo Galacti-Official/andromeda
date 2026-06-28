@@ -11,7 +11,9 @@ class User(SQLModel, table=True):
 
     name: str = Field(index=True, max_length=64)
     email: str = Field(unique=True, index=True)
-    password_hash: str
+    password_hash: str | None = Field(default=None)
+    google_id: str | None = Field(default=None, unique=True, index=True, max_length=32)
+    github_id: str | None = Field(default=None, unique=True, index=True, max_length=32)
 
     email_verified: bool = Field(default=False)
 
