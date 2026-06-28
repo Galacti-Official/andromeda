@@ -27,5 +27,7 @@ class Settings(BaseSettings):
     github_client_secret: str = ""
     github_redirect_uri: str = ""
     frontend_url: str
+    resend_api_key: str = ""
+    resend_from_email: str = "noreply@galacti.org"
 
 settings = Settings()  # type: ignore

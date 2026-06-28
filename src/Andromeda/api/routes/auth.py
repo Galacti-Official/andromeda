@@ -10,11 +10,12 @@ from Andromeda.auth.external.oauth import generate_oauth_state, validate_oauth_s
 from Andromeda.api.database.database import get_session
 from Andromeda.api.database.redis import redis_client
 
-from Andromeda.services.user_service import create_user
+from Andromeda.services.user_service import create_user, verify_user_email, request_verification_email
+from Andromeda.auth.dependancies import get_session_user
 
 from Andromeda.config import settings
 from Andromeda.schemas.jwt import JWTResponse, UserTokenRequest
-from Andromeda.schemas.user import UserLoginRequest, UserLoginResponse, UserLogoutResponse, UserCreateResponse, UserCreate
+from Andromeda.schemas.user import UserLoginRequest, UserLoginResponse, UserLogoutResponse, UserCreateResponse, UserCreate, UserPublic
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -48,9 +49,26 @@ async def register(
     register_request: UserCreate,
     session: AsyncSession = Depends(get_session)
 ) -> UserCreateResponse:
-    user = await create_user(register_request, session=session)
+    user = await create_user(register_request, session=session, redis_client=redis_client)
     await set_session_cookie(request, response, user, redis_client)
     return UserCreateResponse(success=True, message="User created", user=user)
+
+
+@router.post("/verify-email")
+async def send_verification(
+    current_user: UserPublic = Depends(get_session_user)
+) -> dict:
+    await request_verification_email(current_user, redis_client)
+    return {"success": True, "message": "Verification email sent"}
+
+
+@router.post("/verify-email/{token}")
+async def verify_email(
+    token: str,
+    session: AsyncSession = Depends(get_session)
+) -> dict:
+    await verify_user_email(token, session, redis_client)
+    return {"success": True, "message": "Email verified successfully"}
 
 
 @router.post("/logout", response_model=UserLogoutResponse)
