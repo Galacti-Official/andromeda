@@ -9,6 +9,7 @@ class UserPublic(BaseModel):
     id: UUID
     name: str
     email: str
+    email_verified: bool
     avatar: str
     last_login: datetime | None
     created_at: datetime

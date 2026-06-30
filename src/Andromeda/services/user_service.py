@@ -39,14 +39,7 @@ async def create_user(request: UserCreate, session: AsyncSession, redis_client) 
 
     await send_verification_email(str(user.id), user.email, redis_client)
 
-    return UserPublic(
-        id=user.id,
-        name=user.name,
-        email=user.email,
-        avatar=user.avatar,
-        last_login=user.last_login,
-        created_at=user.created_at
-    )
+    return UserPublic.model_validate(user)
 
 
 async def verify_user_email(token: str, session: AsyncSession, redis_client) -> None:
@@ -156,7 +149,4 @@ async def get_user_data(user: UserPublic, session: AsyncSession) -> UserPublic:
     if not user_data:
         raise AndromedaError(404, "not_found", "Selected user not found")
 
-    return UserPublic(
-        id=user_data.id, name=user_data.name, email=user_data.email,
-        avatar=user_data.avatar, last_login=user_data.last_login, created_at=user_data.created_at
-    )
+    return UserPublic.model_validate(user_data)
